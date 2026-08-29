@@ -1,11 +1,10 @@
 "use client";
 
-import Image from "next/image";
-import Link from "next/link";
 import { useEffect, useState } from "react";
-import { api, mediaUrl } from "@/lib/api";
+import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { PLACE_TYPE_LABELS, type Place } from "@/lib/types";
+import { PlaceRow } from "@/components/PlaceRow";
+import type { Place } from "@/lib/types";
 
 export default function MyPlacesPage() {
   const { user, loading: authLoading } = useAuth();
@@ -41,27 +40,9 @@ export default function MyPlacesPage() {
 
       {places && places.length > 0 && (
         <div className="flex flex-col gap-3">
-          {places.map((place) => {
-            const photo = mediaUrl(place.photo);
-            return (
-              <Link
-                key={place.id}
-                href={`/place/${place.id}`}
-                className="flex items-center gap-3 rounded-card border-2 border-ink bg-paper-raised p-3 shadow-hard-sm"
-              >
-                <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-block border-2 border-ink bg-ink">
-                  {photo && <Image src={photo} alt="" fill sizes="56px" className="object-cover" />}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium">{place.name}</p>
-                  <p className="text-xs text-ink-soft">{PLACE_TYPE_LABELS[place.place_type]}</p>
-                </div>
-                <div className="shrink-0 rounded-block border-2 border-ink bg-yellow px-2 py-1 text-center">
-                  <p className="font-display text-sm leading-none">{Number(place.avg_overall).toFixed(1)}</p>
-                </div>
-              </Link>
-            );
-          })}
+          {places.map((place) => (
+            <PlaceRow key={place.id} place={place} />
+          ))}
         </div>
       )}
     </main>

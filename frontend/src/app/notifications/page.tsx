@@ -58,12 +58,14 @@ export default function NotificationsPage() {
             >
               <Avatar user={n.actor} size={36} />
               <div className="min-w-0 flex-1">
-                <p className="text-sm">
+                <p className="break-words text-sm">
                   <span className="font-medium">{n.actor.username}</span>{" "}
                   {n.verb === "reaction" ? (
                     <>
                       a réagi {REACTION_GLYPHS[n.reaction_emoji as keyof typeof REACTION_GLYPHS]} à votre message
                     </>
+                  ) : n.verb === "place_activity" ? (
+                    n.comment ? "a commenté sur votre établissement" : "a laissé un avis sur votre établissement"
                   ) : (
                     "a répondu à votre message"
                   )}

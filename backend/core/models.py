@@ -124,7 +124,7 @@ class Place(models.Model):
     TYPES_WITH_DRINKS = (TYPE_BAR, TYPE_RESTAURANT)
 
     city = models.ForeignKey(City, on_delete=models.CASCADE, related_name="places")
-    name = models.CharField(max_length=150)
+    name = models.CharField(max_length=50)
     place_type = models.CharField(max_length=20, choices=TYPE_CHOICES, default=TYPE_BAR)
     photo = models.ImageField(upload_to="places/", blank=True, null=True)
     latitude = models.DecimalField(max_digits=9, decimal_places=6)
@@ -195,7 +195,7 @@ class Review(models.Model):
     rating_drinks = models.PositiveSmallIntegerField(validators=RATING_VALIDATORS, null=True, blank=True)
     rating_price = models.PositiveSmallIntegerField(validators=RATING_VALIDATORS)
     amount_spent = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
-    text = models.TextField(blank=True, default="")
+    text = models.TextField(max_length=2000, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     reactions = GenericRelation("Reaction", related_query_name="review")
@@ -226,7 +226,7 @@ class Comment(models.Model):
         "self", on_delete=models.CASCADE, null=True, blank=True, related_name="replies"
     )
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="comments")
-    text = models.TextField(blank=True, default="")
+    text = models.TextField(max_length=2000, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     reactions = GenericRelation("Reaction", related_query_name="comment")
@@ -269,11 +269,20 @@ class Reaction(models.Model):
 class Notification(models.Model):
     VERB_REPLY = "reply"
     VERB_REACTION = "reaction"
-    VERB_CHOICES = [(VERB_REPLY, "reply"), (VERB_REACTION, "reaction")]
+    # Fires on the owner of a Place when someone else adds a review or a
+    # comment anywhere in that place's discussion — distinct from VERB_REPLY
+    # (owner of the specific review/comment) since the place owner may be a
+    # different person entirely.
+    VERB_PLACE_ACTIVITY = "place_activity"
+    VERB_CHOICES = [
+        (VERB_REPLY, "reply"),
+        (VERB_REACTION, "reaction"),
+        (VERB_PLACE_ACTIVITY, "place_activity"),
+    ]
 
     recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="notifications")
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+")
-    verb = models.CharField(max_length=10, choices=VERB_CHOICES)
+    verb = models.CharField(max_length=20, choices=VERB_CHOICES)
     # Always set: the review whose thread this event happened in, so the
     # notification can always navigate to a place even if `comment` (below)
     # is later deleted.

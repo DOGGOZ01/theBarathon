@@ -98,7 +98,8 @@ class ThreadedCommentsAndReactionsTests(TestCase):
         self.client_as(self.bob).post(f"/api/reviews/{self.review.id}/comments/", {"text": "hey"})
         client = self.client_as(self.alice)
         res = client.get("/api/notifications/unread-count/")
-        self.assertEqual(res.data["count"], 1)
+        # Alice owns both the review (-> "reply") and the place (-> "place_activity").
+        self.assertEqual(res.data["count"], 2)
 
         client.post("/api/notifications/mark-read/")
         res = client.get("/api/notifications/unread-count/")
@@ -331,3 +332,144 @@ class BugfixRegressionTests(TestCase):
         # One comment tree, 3 levels deep — the pre-fix implementation issued
         # one extra query per node; this should stay flat regardless of depth.
         self.assertLess(len(ctx.captured_queries), 15, "comment tree serialization is not flattened (N+1 regressed)")
+
+
+class CharacterLimitTests(TestCase):
+    def setUp(self):
+        self.alice = User.objects.create_user(username="alice", password="pw")
+        self.bob = User.objects.create_user(username="bob", password="pw")
+
+    def client_as(self, user):
+        client = APIClient()
+        client.force_authenticate(user=user)
+        return client
+
+    def test_place_name_over_50_chars_is_rejected(self):
+        city = City.objects.create(name="Paris", country="France", latitude=48.85, longitude=2.35)
+        client = self.client_as(self.alice)
+        res = client.post(
+            "/api/places/",
+            {
+                "city": city.id,
+                "name": "x" * 51,
+                "place_type": "bar",
+                "latitude": "48.85",
+                "longitude": "2.35",
+            },
+        )
+        self.assertEqual(res.status_code, 400, res.data)
+        self.assertIn("name", res.data)
+
+    def test_place_name_of_exactly_50_chars_is_accepted(self):
+        city = City.objects.create(name="Paris", country="France", latitude=48.85, longitude=2.35)
+        client = self.client_as(self.alice)
+        res = client.post(
+            "/api/places/",
+            {
+                "city": city.id,
+                "name": "x" * 50,
+                "place_type": "bar",
+                "latitude": "48.85",
+                "longitude": "2.35",
+            },
+        )
+        self.assertEqual(res.status_code, 201, res.data)
+
+    def test_review_text_over_2000_chars_is_rejected(self):
+        place = make_place(self.alice)
+        client = self.client_as(self.bob)
+        res = client.post(
+            f"/api/places/{place.id}/reviews/",
+            {"rating_atmosphere": 4, "rating_drinks": 4, "rating_price": 4, "text": "x" * 2001},
+        )
+        self.assertEqual(res.status_code, 400, res.data)
+        self.assertIn("text", res.data)
+
+    def test_comment_text_over_2000_chars_is_rejected(self):
+        place = make_place(self.alice)
+        review = Review.objects.create(
+            place=place, user=self.alice, rating_atmosphere=4, rating_drinks=4, rating_price=4
+        )
+        client = self.client_as(self.bob)
+        res = client.post(f"/api/reviews/{review.id}/comments/", {"text": "x" * 2001})
+        self.assertEqual(res.status_code, 400, res.data)
+        self.assertIn("text", res.data)
+
+
+class PlaceActivityNotificationAndProfileTests(TestCase):
+    def setUp(self):
+        self.alice = User.objects.create_user(username="alice", password="pw")
+        self.bob = User.objects.create_user(username="bob", password="pw")
+        self.carol = User.objects.create_user(username="carol", password="pw")
+        self.place = make_place(self.alice)
+
+    def client_as(self, user):
+        client = APIClient()
+        client.force_authenticate(user=user)
+        return client
+
+    def test_new_review_notifies_place_owner(self):
+        client = self.client_as(self.bob)
+        res = client.post(
+            f"/api/places/{self.place.id}/reviews/",
+            {"rating_atmosphere": 4, "rating_drinks": 4, "rating_price": 4, "text": "Top"},
+        )
+        self.assertEqual(res.status_code, 201, res.data)
+        self.assertTrue(
+            Notification.objects.filter(recipient=self.alice, actor=self.bob, verb="place_activity").exists()
+        )
+
+    def test_owner_reviewing_own_place_does_not_self_notify(self):
+        client = self.client_as(self.alice)
+        client.post(
+            f"/api/places/{self.place.id}/reviews/",
+            {"rating_atmosphere": 4, "rating_drinks": 4, "rating_price": 4},
+        )
+        self.assertFalse(Notification.objects.filter(recipient=self.alice, verb="place_activity").exists())
+
+    def test_comment_on_someone_elses_review_of_your_place_notifies_you(self):
+        review = Review.objects.create(
+            place=self.place, user=self.bob, rating_atmosphere=4, rating_drinks=4, rating_price=4
+        )
+        client = self.client_as(self.carol)
+        res = client.post(f"/api/reviews/{review.id}/comments/", {"text": "hey"})
+        self.assertEqual(res.status_code, 201, res.data)
+        # Alice owns the place (not the review) and should still be notified.
+        self.assertTrue(
+            Notification.objects.filter(recipient=self.alice, actor=self.carol, verb="place_activity").exists()
+        )
+        # Bob owns the review itself, so gets the separate "reply" notification.
+        self.assertTrue(Notification.objects.filter(recipient=self.bob, actor=self.carol, verb="reply").exists())
+
+    def test_nested_reply_notifies_place_owner_too(self):
+        review = Review.objects.create(
+            place=self.place, user=self.bob, rating_atmosphere=4, rating_drinks=4, rating_price=4
+        )
+        top = Comment.objects.create(review=review, user=self.bob, text="top")
+        client = self.client_as(self.carol)
+        res = client.post(f"/api/comments/{top.id}/replies/", {"text": "+1"})
+        self.assertEqual(res.status_code, 201, res.data)
+        self.assertTrue(
+            Notification.objects.filter(recipient=self.alice, actor=self.carol, verb="place_activity").exists()
+        )
+
+    def test_profile_endpoint_returns_places_and_reviews_only_not_comments(self):
+        make_place(self.bob)
+        Review.objects.create(
+            place=self.place, user=self.bob, rating_atmosphere=4, rating_drinks=4, rating_price=4, text="Bof"
+        )
+        review2 = Review.objects.create(
+            place=self.place, user=self.alice, rating_atmosphere=5, rating_drinks=5, rating_price=5
+        )
+        # Bob also replies on Alice's review — a profile is "their own stuff",
+        # so this comment must NOT show up in bob's profile activity.
+        Comment.objects.create(review=review2, user=self.bob, text="nice")
+
+        client = self.client_as(self.alice)
+        res = client.get(f"/api/users/{self.bob.id}/profile/")
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertEqual(res.data["user"]["username"], "bob")
+        self.assertEqual(len(res.data["places"]), 1)
+        types = {item["type"] for item in res.data["activity"]}
+        self.assertEqual(types, {"review"})
+        self.assertEqual(len(res.data["activity"]), 1)

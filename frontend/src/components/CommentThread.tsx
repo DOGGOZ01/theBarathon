@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { Avatar } from "@/components/Avatar";
 import { CommentComposer } from "@/components/CommentComposer";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -45,13 +46,21 @@ export function CommentThread({ comment, currentUser, depth, onChanged }: Commen
   return (
     <div id={`comment-${comment.id}`} className={depth > 0 ? "mt-3 border-l-2 border-line pl-3" : "mt-3"}>
       <div className="flex items-start gap-2">
-        <Avatar user={comment.user} size={28} />
-        <div className="flex-1">
+        <Link href={`/users/${comment.user.id}`} className="shrink-0">
+          <Avatar user={comment.user} size={28} />
+        </Link>
+        <div className="min-w-0 flex-1">
           <div className="flex items-baseline justify-between gap-2">
-            <p className="text-sm font-medium">{comment.user.username}</p>
-            <p className="text-[11px] text-ink-soft">{new Date(comment.created_at).toLocaleDateString("fr-FR")}</p>
+            <Link href={`/users/${comment.user.id}`} className="min-w-0 truncate text-sm font-medium">
+              {comment.user.username}
+            </Link>
+            <p className="shrink-0 text-[11px] text-ink-soft">
+              {new Date(comment.created_at).toLocaleDateString("fr-FR")}
+            </p>
           </div>
-          {comment.text && <p className="mt-0.5 text-sm leading-relaxed">{comment.text}</p>}
+          {comment.text && (
+            <p className="mt-0.5 break-words text-sm leading-relaxed">{comment.text}</p>
+          )}
 
           {comment.photos.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5">

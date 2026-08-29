@@ -33,6 +33,7 @@ urlpatterns = [
         name="notification-unread-count",
     ),
     path("activity/", views.ActivityFeedView.as_view(), name="activity-feed"),
+    path("users/<int:pk>/profile/", views.UserProfileView.as_view(), name="user-profile"),
     path("admin/invite-code/", views.InviteCodeView.as_view(), name="invite-code"),
     path(
         "admin/invite-code/regenerate/",

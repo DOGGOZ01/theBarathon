@@ -131,8 +131,10 @@ export function ReviewForm({ placeId, placeType, existingReview, onSaved, onCanc
         onChange={(e) => setText(e.target.value)}
         placeholder="Vos impressions (facultatif)"
         rows={3}
+        maxLength={2000}
         className="rounded-block border-2 border-ink bg-paper px-3 py-2 text-sm"
       />
+      {text.length > 1800 && <p className="-mt-2 text-right text-xs text-ink-soft">{text.length}/2000</p>}
 
       <div className="flex flex-wrap gap-2">
         {photos.map((photo) => {

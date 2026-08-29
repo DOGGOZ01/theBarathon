@@ -15,8 +15,11 @@ const nextConfig: NextConfig = {
     // 400 without this. Never enable in production.
     ...(isDev ? { dangerouslyAllowLocalIP: true } : {}),
     remotePatterns: [
-      { protocol: "http", hostname: "localhost", port: "8000", pathname: "/media/**" },
-      { protocol: "http", hostname: "127.0.0.1", port: "8000", pathname: "/media/**" },
+      { protocol: "http" as const, hostname: "localhost", port: "8000", pathname: "/media/**" },
+      { protocol: "http" as const, hostname: "127.0.0.1", port: "8000", pathname: "/media/**" },
+      // Production: media is served over the same public domain (nginx
+      // proxies /media/ straight to the Django media root, see nginx config).
+      { protocol: "https" as const, hostname: "thebarathon.sashakuz.com", pathname: "/media/**" },
       ...(isDev
         ? [
             { protocol: "http" as const, hostname: "192.168.*.*", port: "8000", pathname: "/media/**" },

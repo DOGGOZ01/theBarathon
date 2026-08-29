@@ -230,7 +230,7 @@ class PlaceReviewsView(generics.ListCreateAPIView):
         )
 
     def create(self, request, *args, **kwargs):
-        place = get_object_or_404(Place, pk=self.kwargs["place_id"])
+        place = get_object_or_404(Place.objects.select_related("created_by"), pk=self.kwargs["place_id"])
         if Review.objects.filter(place=place, user=request.user).exists():
             return Response(
                 {"detail": "Vous avez déjà laissé un avis pour cet établissement."}, status=status.HTTP_409_CONFLICT
@@ -238,7 +238,7 @@ class PlaceReviewsView(generics.ListCreateAPIView):
         serializer = self.get_serializer(data=request.data, context={**self.get_serializer_context(), "place": place})
         serializer.is_valid(raise_exception=True)
         try:
-            serializer.save(place=place, user=request.user)
+            review = serializer.save(place=place, user=request.user)
         except IntegrityError:
             # Belt-and-braces for the race where two concurrent requests both
             # pass the exists() check above before either has saved; the
@@ -246,6 +246,7 @@ class PlaceReviewsView(generics.ListCreateAPIView):
             return Response(
                 {"detail": "Vous avez déjà laissé un avis pour cet établissement."}, status=status.HTTP_409_CONFLICT
             )
+        reactions.notify_place_activity(request.user, place, review)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
@@ -301,9 +302,12 @@ class ReviewCommentsView(generics.ListCreateAPIView):
         )
 
     def perform_create(self, serializer):
-        review = get_object_or_404(Review, pk=self.kwargs["review_id"])
+        review = get_object_or_404(
+            Review.objects.select_related("place", "place__created_by"), pk=self.kwargs["review_id"]
+        )
         comment = serializer.save(review=review, parent=None, user=self.request.user)
         reactions.notify_reply(comment)
+        reactions.notify_place_activity(self.request.user, review.place, review, comment)
 
 
 class CommentRepliesView(generics.CreateAPIView):
@@ -314,9 +318,13 @@ class CommentRepliesView(generics.CreateAPIView):
         return {"request": self.request}
 
     def perform_create(self, serializer):
-        parent = get_object_or_404(Comment, pk=self.kwargs["comment_id"])
+        parent = get_object_or_404(
+            Comment.objects.select_related("review", "review__place", "review__place__created_by"),
+            pk=self.kwargs["comment_id"],
+        )
         comment = serializer.save(review=parent.review, parent=parent, user=self.request.user)
         reactions.notify_reply(comment)
+        reactions.notify_place_activity(self.request.user, parent.review.place, parent.review, comment)
 
 
 class CommentDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -407,6 +415,45 @@ class NotificationUnreadCountView(APIView):
         return Response({"count": count})
 
 
+def _place_activity_item(place):
+    return {
+        "type": "place",
+        "id": place.id,
+        "created_at": place.created_at,
+        "user": UserSerializer(place.created_by).data if place.created_by else None,
+        "place_id": place.id,
+        "place_name": place.name,
+        "city_id": place.city_id,
+        "text": "",
+    }
+
+
+def _review_activity_item(review):
+    return {
+        "type": "review",
+        "id": review.id,
+        "created_at": review.created_at,
+        "user": UserSerializer(review.user).data,
+        "place_id": review.place_id,
+        "place_name": review.place.name,
+        "city_id": review.place.city_id,
+        "text": review.text[:140],
+    }
+
+
+def _comment_activity_item(comment):
+    return {
+        "type": "comment",
+        "id": comment.id,
+        "created_at": comment.created_at,
+        "user": UserSerializer(comment.user).data,
+        "place_id": comment.review.place_id,
+        "place_name": comment.review.place.name,
+        "city_id": comment.review.place.city_id,
+        "text": comment.text[:140],
+    }
+
+
 class ActivityFeedView(APIView):
     """Recently added places (anyone) and recently added reviews/comments
     (other users only), merged into one reverse-chronological feed."""
@@ -417,60 +464,54 @@ class ActivityFeedView(APIView):
         items = []
 
         places = Place.objects.select_related("city", "created_by").order_by("-created_at")[:ACTIVITY_FEED_LIMIT]
-        for place in places:
-            items.append(
-                {
-                    "type": "place",
-                    "id": place.id,
-                    "created_at": place.created_at,
-                    "user": UserSerializer(place.created_by).data if place.created_by else None,
-                    "place_id": place.id,
-                    "place_name": place.name,
-                    "city_id": place.city_id,
-                    "text": "",
-                }
-            )
+        items.extend(_place_activity_item(p) for p in places)
 
         reviews = (
             Review.objects.exclude(user=request.user)
             .select_related("user", "place", "place__city")
             .order_by("-created_at")[:ACTIVITY_FEED_LIMIT]
         )
-        for review in reviews:
-            items.append(
-                {
-                    "type": "review",
-                    "id": review.id,
-                    "created_at": review.created_at,
-                    "user": UserSerializer(review.user).data,
-                    "place_id": review.place_id,
-                    "place_name": review.place.name,
-                    "city_id": review.place.city_id,
-                    "text": review.text[:140],
-                }
-            )
+        items.extend(_review_activity_item(r) for r in reviews)
 
         comments = (
             Comment.objects.exclude(user=request.user)
             .select_related("user", "review", "review__place", "review__place__city")
             .order_by("-created_at")[:ACTIVITY_FEED_LIMIT]
         )
-        for comment in comments:
-            items.append(
-                {
-                    "type": "comment",
-                    "id": comment.id,
-                    "created_at": comment.created_at,
-                    "user": UserSerializer(comment.user).data,
-                    "place_id": comment.review.place_id,
-                    "place_name": comment.review.place.name,
-                    "city_id": comment.review.place.city_id,
-                    "text": comment.text[:140],
-                }
-            )
+        items.extend(_comment_activity_item(c) for c in comments)
 
         items.sort(key=lambda i: i["created_at"], reverse=True)
         return Response(items[:ACTIVITY_FEED_LIMIT])
+
+
+class UserProfileView(APIView):
+    """Public-within-the-group profile: what a user has added (places) and
+    reviewed. Deliberately reviews only, not threaded comments — those are
+    replies to other people's content and don't read as "this user's own
+    stuff" the way a profile page should."""
+
+    permission_classes = [IsAuthenticated]
+    PROFILE_ACTIVITY_LIMIT = 100
+
+    def get(self, request, pk):
+        profile_user = get_object_or_404(User, pk=pk)
+
+        places = Place.objects.select_related("city", "created_by").filter(created_by=profile_user)
+
+        reviews = (
+            Review.objects.filter(user=profile_user)
+            .select_related("user", "place", "place__city")
+            .order_by("-created_at")[: self.PROFILE_ACTIVITY_LIMIT]
+        )
+        items = [_review_activity_item(r) for r in reviews]
+
+        return Response(
+            {
+                "user": UserSerializer(profile_user).data,
+                "places": PlaceListSerializer(places, many=True, context={"request": request}).data,
+                "activity": items[: self.PROFILE_ACTIVITY_LIMIT],
+            }
+        )
 
 
 class InviteCodeView(APIView):

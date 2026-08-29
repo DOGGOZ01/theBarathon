@@ -124,7 +124,7 @@ export interface InviteConfig {
   updated_at: string;
 }
 
-export type NotificationVerb = "reply" | "reaction";
+export type NotificationVerb = "reply" | "reaction" | "place_activity";
 
 export interface AppNotification {
   id: number;
@@ -152,4 +152,10 @@ export interface ActivityItem {
   place_name: string;
   city_id: number;
   text: string;
+}
+
+export interface UserProfile {
+  user: User;
+  places: Place[];
+  activity: ActivityItem[];
 }

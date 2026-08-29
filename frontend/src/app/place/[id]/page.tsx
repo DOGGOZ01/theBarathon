@@ -122,9 +122,9 @@ function PlaceDetailPageInner() {
 
       <div className="px-4">
         <header className="mt-4 flex items-start justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="font-display text-2xl leading-tight">{place.name}</h1>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="min-w-0 break-words font-display text-2xl leading-tight">{place.name}</h1>
               {canEditPlace && (
                 <button
                   type="button"

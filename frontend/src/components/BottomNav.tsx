@@ -177,6 +177,13 @@ export function BottomNav() {
             >
               Mes endroits
             </Link>
+            <Link
+              href="/my-reviews"
+              onClick={() => setSheetOpen(false)}
+              className="mt-2 flex min-h-[44px] w-full items-center justify-center rounded-block border-2 border-ink bg-paper font-medium shadow-hard-sm active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
+            >
+              Mes avis
+            </Link>
             <button
               type="button"
               onClick={() => {

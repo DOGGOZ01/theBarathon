@@ -14,15 +14,31 @@ function resolveApiBase(): string {
 
 export const API_BASE = resolveApiBase();
 
+// DRF returns two different shapes for errors: a top-level {"detail": "..."}
+// for hand-raised ValidationErrors (e.g. LoginView's bad-credentials check),
+// but per-field {"username": ["Ce nom d'utilisateur est déjà pris."]} for
+// ordinary serializer field validation (e.g. RegisterSerializer). Only
+// handling "detail" meant every field-validation error surfaced to the user
+// as a meaningless "Request failed (400)" — this pulls the real message out
+// of whichever shape actually came back.
+function extractErrorMessage(status: number, data: unknown): string {
+  if (typeof data === "object" && data !== null) {
+    const obj = data as Record<string, unknown>;
+    if ("detail" in obj) return String(obj.detail);
+    for (const value of Object.values(obj)) {
+      if (Array.isArray(value) && value.length > 0) return String(value[0]);
+      if (typeof value === "string") return value;
+    }
+  }
+  return `Request failed (${status})`;
+}
+
 export class ApiError extends Error {
   status: number;
   data: unknown;
 
   constructor(status: number, data: unknown) {
-    const message =
-      (typeof data === "object" && data && "detail" in data && String((data as { detail: unknown }).detail)) ||
-      `Request failed (${status})`;
-    super(message);
+    super(extractErrorMessage(status, data));
     this.status = status;
     this.data = data;
   }

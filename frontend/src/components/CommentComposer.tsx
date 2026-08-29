@@ -69,8 +69,12 @@ export function CommentComposer({ target, onSaved, onCancel }: CommentComposerPr
         onChange={(e) => setText(e.target.value)}
         placeholder="Votre réponse…"
         rows={2}
+        maxLength={2000}
         className="rounded-block border-2 border-ink bg-paper-raised px-2.5 py-1.5 text-sm"
       />
+      {text.length > 1800 && (
+        <p className="-mt-1 text-right text-xs text-ink-soft">{text.length}/2000</p>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         {files.map((file, idx) => (
           <div key={idx} className="relative h-12 w-12">

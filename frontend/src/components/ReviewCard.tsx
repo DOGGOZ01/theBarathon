@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { api, mediaUrl } from "@/lib/api";
 import { StarRating } from "@/components/StarRating";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -54,13 +55,13 @@ export function ReviewCard({
   return (
     <article id={`review-${review.id}`} className="rounded-card border-2 border-ink bg-paper-raised p-4 shadow-hard-sm">
       <header className="mb-2 flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2">
+        <Link href={`/users/${review.user.id}`} className="flex min-w-0 items-center gap-2">
           <Avatar user={review.user} size={32} />
-          <div>
-            <p className="font-medium">{review.user.username}</p>
+          <div className="min-w-0">
+            <p className="truncate font-medium">{review.user.username}</p>
             <p className="text-xs text-ink-soft">{new Date(review.created_at).toLocaleDateString("fr-FR")}</p>
           </div>
-        </div>
+        </Link>
         {canManage && (
           <div className="flex gap-1">
             {isOwner && (
@@ -96,7 +97,7 @@ export function ReviewCard({
         )}
       </div>
 
-      {review.text && <p className="text-sm leading-relaxed">{review.text}</p>}
+      {review.text && <p className="break-words text-sm leading-relaxed">{review.text}</p>}
 
       {review.photos.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">

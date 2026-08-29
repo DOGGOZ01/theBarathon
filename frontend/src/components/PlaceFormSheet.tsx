@@ -67,9 +67,13 @@ export function PlaceFormSheet({ cityId, place, pin, onSaved, onCancel }: PlaceF
 
         <div className="flex flex-col gap-3">
           <label className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium">Nom</span>
+            <div className="flex items-baseline justify-between">
+              <span className="text-sm font-medium">Nom</span>
+              <span className="text-xs text-ink-soft">{name.length}/50</span>
+            </div>
             <input
               required
+              maxLength={50}
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="min-h-[44px] rounded-block border-2 border-ink bg-paper px-3 py-2"
