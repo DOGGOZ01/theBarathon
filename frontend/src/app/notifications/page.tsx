@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { useAuth } from "@/lib/auth-context";
+import { useRequireAuth } from "@/lib/auth-context";
 import { Avatar } from "@/components/Avatar";
 import { REACTION_GLYPHS, type AppNotification } from "@/lib/types";
 
@@ -13,7 +13,7 @@ function notificationHref(n: AppNotification): string {
 }
 
 export default function NotificationsPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading } = useRequireAuth();
   const [items, setItems] = useState<AppNotification[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 

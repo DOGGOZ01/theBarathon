@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { useAuth } from "@/lib/auth-context";
+import { useRequireAuth } from "@/lib/auth-context";
 import { PlaceRow } from "@/components/PlaceRow";
 import type { Place } from "@/lib/types";
 
 export default function MyPlacesPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading } = useRequireAuth();
   const [places, setPlaces] = useState<Place[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 

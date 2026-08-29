@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { useAuth } from "@/lib/auth-context";
+import { useRequireAuth } from "@/lib/auth-context";
 import { CityCard } from "@/components/CityCard";
 import type { City } from "@/lib/types";
 
 export default function CitiesPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading } = useRequireAuth();
   const [cities, setCities] = useState<City[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 

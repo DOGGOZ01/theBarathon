@@ -107,6 +107,23 @@ export function useAuth() {
   return ctx;
 }
 
+// Once the initial auth check has settled with no user (e.g. a stale/expired
+// refresh_token cookie the middleware let through because it only checks
+// presence, not validity), send the user to /login instead of leaving pages
+// stuck on their "authLoading || !user" loading branch forever.
+export function useRequireAuth() {
+  const { user, loading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.replace("/login");
+    }
+  }, [loading, user, router]);
+
+  return { user, loading };
+}
+
 export function isApiError(err: unknown): err is ApiError {
   return err instanceof ApiError;
 }
