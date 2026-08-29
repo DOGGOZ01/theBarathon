@@ -1,0 +1,6 @@
+# Claude Code local project settings/session data — machine-specific, not part of the app
+.claude/
+
+# OS cruft
+.DS_Store
+Thumbs.db

@@ -1,0 +1,111 @@
+@import "tailwindcss";
+
+:root {
+  --color-paper: #faf7ef;
+  --color-paper-raised: #ffffff;
+  --color-ink: #16140f;
+  --color-ink-soft: #4a4636;
+  --color-yellow: #ffc629;
+  --color-yellow-deep: #e8a800;
+  --color-yellow-pale: #fff1c2;
+  --color-line: #e7e0cc;
+  --color-good: #2f7d4f;
+  --color-bad: #c0392b;
+
+  --shadow-hard: 3px 3px 0 0 var(--color-ink);
+  --shadow-hard-sm: 2px 2px 0 0 var(--color-ink);
+
+  --radius-card: 22px 22px 22px 4px;
+  --radius-pill: 999px;
+  --radius-block: 6px;
+
+  --touch: 44px;
+}
+
+@theme inline {
+  --color-paper: var(--color-paper);
+  --color-paper-raised: var(--color-paper-raised);
+  --color-ink: var(--color-ink);
+  --color-ink-soft: var(--color-ink-soft);
+  --color-yellow: var(--color-yellow);
+  --color-yellow-deep: var(--color-yellow-deep);
+  --color-yellow-pale: var(--color-yellow-pale);
+  --color-line: var(--color-line);
+  --color-good: var(--color-good);
+  --color-bad: var(--color-bad);
+  --font-sans: var(--font-golos);
+  --font-display: var(--font-unbounded);
+  --radius-card: var(--radius-card);
+  --radius-pill: var(--radius-pill);
+  --radius-block: var(--radius-block);
+  --shadow-hard: var(--shadow-hard);
+  --shadow-hard-sm: var(--shadow-hard-sm);
+}
+
+html {
+  height: 100%;
+}
+
+body {
+  min-height: 100%;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-golos), system-ui, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: var(--color-yellow);
+  color: var(--color-ink);
+}
+
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+
+a {
+  color: inherit;
+}
+
+input:focus-visible,
+textarea:focus-visible,
+button:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid var(--color-ink);
+  outline-offset: 2px;
+}
+
+.maplibregl-map {
+  font-family: var(--font-golos), system-ui, sans-serif;
+  background: var(--color-paper);
+}
+
+.maplibregl-ctrl-group {
+  border-radius: var(--radius-block) !important;
+  border: 2px solid var(--color-ink) !important;
+  box-shadow: var(--shadow-hard-sm) !important;
+  overflow: hidden;
+}
+
+.maplibregl-ctrl-group button {
+  width: 44px !important;
+  height: 44px !important;
+}
+
+.maplibregl-ctrl-attrib {
+  border-radius: var(--radius-block) 0 0 0 !important;
+  font-size: 10px !important;
+}
+
+.maplibregl-marker {
+  z-index: 10;
+}
+
