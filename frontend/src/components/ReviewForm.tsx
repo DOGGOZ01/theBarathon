@@ -4,21 +4,24 @@ import { useRef, useState } from "react";
 import Image from "next/image";
 import { api, mediaUrl, ApiError } from "@/lib/api";
 import { StarRating } from "@/components/StarRating";
-import type { Review, ReviewPhoto } from "@/lib/types";
+import { DRINKS_CRITERION_LABEL, PLACE_TYPES_WITH_DRINKS, type PlaceType, type Review, type ReviewPhoto } from "@/lib/types";
 
 const MAX_PHOTOS = 5;
 
 interface ReviewFormProps {
   placeId: number;
+  placeType: PlaceType;
   existingReview: Review | null;
   onSaved: (review: Review) => void;
   onCancel?: () => void;
 }
 
-export function ReviewForm({ placeId, existingReview, onSaved, onCancel }: ReviewFormProps) {
+export function ReviewForm({ placeId, placeType, existingReview, onSaved, onCancel }: ReviewFormProps) {
+  const hasDrinks = PLACE_TYPES_WITH_DRINKS.includes(placeType);
   const [atmosphere, setAtmosphere] = useState(existingReview?.rating_atmosphere ?? 0);
   const [drinks, setDrinks] = useState(existingReview?.rating_drinks ?? 0);
   const [price, setPrice] = useState(existingReview?.rating_price ?? 0);
+  const [amountSpent, setAmountSpent] = useState(existingReview?.amount_spent ?? "");
   const [text, setText] = useState(existingReview?.text ?? "");
   const [photos, setPhotos] = useState<ReviewPhoto[]>(existingReview?.photos ?? []);
   const [newFiles, setNewFiles] = useState<File[]>([]);
@@ -56,16 +59,17 @@ export function ReviewForm({ placeId, existingReview, onSaved, onCancel }: Revie
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!atmosphere || !drinks || !price) {
-      setError("Notez les trois critères");
+    if (!atmosphere || !price || (hasDrinks && !drinks)) {
+      setError(hasDrinks ? "Notez les trois critères" : "Notez les deux critères");
       return;
     }
     setBusy(true);
     try {
       const body = {
         rating_atmosphere: atmosphere,
-        rating_drinks: drinks,
+        rating_drinks: hasDrinks ? drinks : null,
         rating_price: price,
+        amount_spent: amountSpent.trim() === "" ? null : amountSpent,
         text,
       };
       const review = savedReviewId
@@ -104,9 +108,23 @@ export function ReviewForm({ placeId, existingReview, onSaved, onCancel }: Revie
     <form onSubmit={onSubmit} className="flex flex-col gap-4 rounded-card border-2 border-ink bg-paper-raised p-4 shadow-hard">
       <div className="grid grid-cols-1 gap-3">
         <RatingRow label="Ambiance" value={atmosphere} onChange={setAtmosphere} />
-        <RatingRow label="Boissons" value={drinks} onChange={setDrinks} />
+        {hasDrinks && <RatingRow label={DRINKS_CRITERION_LABEL[placeType]} value={drinks} onChange={setDrinks} />}
         <RatingRow label="Rapport qualité-prix" value={price} onChange={setPrice} />
       </div>
+
+      <label className="flex flex-col gap-1.5">
+        <span className="text-sm font-medium">Montant dépensé (€, facultatif)</span>
+        <input
+          type="number"
+          inputMode="decimal"
+          min="0"
+          step="0.01"
+          value={amountSpent}
+          onChange={(e) => setAmountSpent(e.target.value)}
+          placeholder="ex : 25"
+          className="min-h-[44px] rounded-block border-2 border-ink bg-paper px-3 py-2 text-sm"
+        />
+      </label>
 
       <textarea
         value={text}

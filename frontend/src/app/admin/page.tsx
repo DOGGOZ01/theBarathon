@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { api, mediaUrl } from "@/lib/api";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -69,7 +70,14 @@ export default function AdminPage() {
 
   if (loading) return <main className="p-6 text-ink-soft">Chargement…</main>;
   if (!user?.is_admin) {
-    return <main className="p-6">Accès réservé aux administrateurs.</main>;
+    return (
+      <main className="flex flex-col gap-3 p-6">
+        <p>Accès réservé aux administrateurs.</p>
+        <Link href="/" className="font-medium text-ink underline underline-offset-4">
+          Retour à l&apos;accueil
+        </Link>
+      </main>
+    );
   }
 
   const selectedCity = cities.find((c) => c.id === selectedCityId) ?? null;

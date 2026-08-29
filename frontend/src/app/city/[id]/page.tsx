@@ -2,8 +2,8 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { PlaceFormSheet } from "@/components/PlaceFormSheet";
 import type { City, Place } from "@/lib/types";
@@ -18,8 +18,18 @@ const MapPickerOverlay = dynamic(() => import("@/components/MapPickerOverlay").t
 });
 
 export default function CityMapPage() {
+  return (
+    <Suspense fallback={<main className="flex h-dvh items-center justify-center text-ink-soft">Chargement…</main>}>
+      <CityMapPageInner />
+    </Suspense>
+  );
+}
+
+function CityMapPageInner() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const focusPlaceId = searchParams.get("place") ? Number(searchParams.get("place")) : null;
   const [city, setCity] = useState<City | null>(null);
   const [places, setPlaces] = useState<Place[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -75,6 +85,7 @@ export default function CityMapPage() {
         places={places}
         onPlaceClick={(place) => router.push(`/place/${place.id}`)}
         geolocate
+        focusPlaceId={focusPlaceId}
       />
 
       <button

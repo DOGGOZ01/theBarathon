@@ -2,22 +2,33 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useParams, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { api, mediaUrl } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { StarRating } from "@/components/StarRating";
 import { ReviewForm } from "@/components/ReviewForm";
 import { ReviewCard } from "@/components/ReviewCard";
 import { Lightbox } from "@/components/Lightbox";
-import type { PlaceDetail, ReviewPhoto } from "@/lib/types";
+import { PlaceFormSheet } from "@/components/PlaceFormSheet";
+import { DRINKS_CRITERION_LABEL, PLACE_TYPES_WITH_DRINKS, type PlaceDetail, type ReviewPhoto } from "@/lib/types";
 
 export default function PlaceDetailPage() {
+  return (
+    <Suspense fallback={<main className="flex h-dvh items-center justify-center text-ink-soft">Chargement…</main>}>
+      <PlaceDetailPageInner />
+    </Suspense>
+  );
+}
+
+function PlaceDetailPageInner() {
   const { id } = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
   const { user } = useAuth();
   const [place, setPlace] = useState<PlaceDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [editingPlace, setEditingPlace] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   function load() {
@@ -28,6 +39,21 @@ export default function PlaceDetailPage() {
   }
 
   useEffect(load, [id]);
+
+  useEffect(() => {
+    if (!place) return;
+    const focus = searchParams.get("focus");
+    if (!focus) return;
+    const el = document.getElementById(focus);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.style.transition = "box-shadow 0.3s";
+    el.style.boxShadow = "0 0 0 4px var(--color-yellow)";
+    const timer = setTimeout(() => {
+      el.style.boxShadow = "";
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [place, searchParams]);
 
   const gallery = useMemo(() => {
     if (!place) return [];
@@ -62,6 +88,15 @@ export default function PlaceDetailPage() {
   }
 
   const photo = mediaUrl(place.photo);
+  const hasDrinks = PLACE_TYPES_WITH_DRINKS.includes(place.place_type);
+  const canEditPlace = user.is_admin || place.created_by?.id === user.id;
+
+  // Arriving here via a deep link (Nouveautés/Notifications) should return
+  // there on "back", not always to the city map — those are two different
+  // "where did I come from" contexts and the arrow shouldn't collapse them.
+  const cameFrom = searchParams.get("from");
+  const backHref =
+    cameFrom === "activity" ? "/activity" : cameFrom === "notifications" ? "/notifications" : `/city/${place.city}`;
 
   return (
     <main className="mx-auto max-w-md pb-10">
@@ -72,16 +107,38 @@ export default function PlaceDetailPage() {
           <div className="absolute inset-0 bg-[repeating-linear-gradient(135deg,#2a2718_0,#2a2718_2px,transparent_2px,transparent_14px)]" />
         )}
         <Link
-          href={`/city/${place.city}`}
+          href={backHref}
           className="absolute left-3 top-3 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-pill border-2 border-ink bg-paper-raised shadow-hard-sm"
         >
           ←
+        </Link>
+        <Link
+          href={`/city/${place.city}?place=${place.id}`}
+          className="absolute right-3 top-3 flex min-h-[44px] items-center justify-center rounded-pill border-2 border-ink bg-yellow px-3 text-sm font-medium shadow-hard-sm"
+        >
+          Voir sur la carte
         </Link>
       </div>
 
       <div className="px-4">
         <header className="mt-4 flex items-start justify-between gap-3">
-          <h1 className="font-display text-2xl leading-tight">{place.name}</h1>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="font-display text-2xl leading-tight">{place.name}</h1>
+              {canEditPlace && (
+                <button
+                  type="button"
+                  onClick={() => setEditingPlace(true)}
+                  className="rounded-block border-2 border-ink bg-paper px-2 py-0.5 text-xs font-medium shadow-hard-sm"
+                >
+                  Modifier
+                </button>
+              )}
+            </div>
+            {place.created_by && (
+              <p className="mt-1 text-xs text-ink-soft">Ajouté par {place.created_by.username}</p>
+            )}
+          </div>
           <div className="shrink-0 rounded-block border-2 border-ink bg-yellow px-3 py-1.5 text-center shadow-hard-sm">
             <p className="font-display text-xl leading-none">{Number(place.avg_overall).toFixed(1)}</p>
             <p className="text-[10px] font-medium">note globale</p>
@@ -90,8 +147,14 @@ export default function PlaceDetailPage() {
 
         <div className="mt-4 flex flex-col gap-2 rounded-card border-2 border-ink bg-paper-raised p-4 shadow-hard-sm">
           <SubRating label="Ambiance" value={Number(place.avg_atmosphere)} />
-          <SubRating label="Boissons" value={Number(place.avg_drinks)} />
+          {hasDrinks && <SubRating label={DRINKS_CRITERION_LABEL[place.place_type]} value={Number(place.avg_drinks)} />}
           <SubRating label="Rapport qualité-prix" value={Number(place.avg_price)} />
+          {Number(place.avg_spent) > 0 && (
+            <div className="flex items-center justify-between border-t-2 border-line pt-2">
+              <span className="text-sm text-ink-soft">Prix moyen dépensé</span>
+              <span className="text-sm font-medium">{Number(place.avg_spent).toFixed(0)}€</span>
+            </div>
+          )}
         </div>
 
         {gallery.length > 0 && (
@@ -120,6 +183,7 @@ export default function PlaceDetailPage() {
           {editing || !ownReview ? (
             <ReviewForm
               placeId={place.id}
+              placeType={place.place_type}
               existingReview={ownReview}
               onSaved={onReviewSaved}
               onCancel={ownReview ? () => setEditing(false) : undefined}
@@ -127,10 +191,12 @@ export default function PlaceDetailPage() {
           ) : (
             <ReviewCard
               review={ownReview}
+              placeType={place.place_type}
               currentUser={user}
               onEdit={() => setEditing(true)}
               onDeleted={load}
               onPhotoClick={openPhotoInGallery}
+              onCommentsChanged={load}
             />
           )}
         </section>
@@ -143,10 +209,12 @@ export default function PlaceDetailPage() {
                 <ReviewCard
                   key={r.id}
                   review={r}
+                  placeType={place.place_type}
                   currentUser={user}
                   onEdit={() => {}}
                   onDeleted={load}
                   onPhotoClick={openPhotoInGallery}
+                  onCommentsChanged={load}
                 />
               ))}
             </div>
@@ -160,6 +228,18 @@ export default function PlaceDetailPage() {
           index={lightboxIndex}
           onClose={() => setLightboxIndex(null)}
           onIndexChange={setLightboxIndex}
+        />
+      )}
+
+      {editingPlace && (
+        <PlaceFormSheet
+          cityId={place.city}
+          place={place}
+          onCancel={() => setEditingPlace(false)}
+          onSaved={() => {
+            setEditingPlace(false);
+            load();
+          }}
         />
       )}
     </main>

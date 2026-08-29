@@ -8,13 +8,27 @@ import type { User } from "./types";
 interface AuthState {
   user: User | null;
   loading: boolean;
-  login: (username: string, password: string) => Promise<void>;
-  register: (username: string, password: string, inviteCode: string) => Promise<void>;
+  login: (username: string, password: string, redirectTo?: string | null) => Promise<void>;
+  register: (
+    username: string,
+    password: string,
+    inviteCode: string,
+    avatar?: File | null,
+    redirectTo?: string | null
+  ) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
+
+// Only ever navigate to an in-app relative path after login/register — a
+// `next`/redirect query param straight from the URL is attacker-controlled,
+// so an absolute or protocol-relative URL here would be an open redirect.
+function safeRedirect(path: string | null | undefined): string {
+  if (!path || !path.startsWith("/") || path.startsWith("//")) return "/";
+  return path;
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -38,23 +52,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [fetchMe]);
 
   const login = useCallback(
-    async (username: string, password: string) => {
+    async (username: string, password: string, redirectTo?: string | null) => {
       const me = await api.post<User>("/auth/login/", { username, password });
       setUser(me);
-      router.push("/");
+      router.push(safeRedirect(redirectTo));
     },
     [router]
   );
 
   const register = useCallback(
-    async (username: string, password: string, inviteCode: string) => {
-      const me = await api.post<User>("/auth/register/", {
-        username,
-        password,
-        invite_code: inviteCode,
-      });
+    async (
+      username: string,
+      password: string,
+      inviteCode: string,
+      avatar?: File | null,
+      redirectTo?: string | null
+    ) => {
+      let body: FormData | Record<string, string>;
+      if (avatar) {
+        body = new FormData();
+        body.append("username", username);
+        body.append("password", password);
+        body.append("invite_code", inviteCode);
+        body.append("avatar", avatar);
+      } else {
+        body = { username, password, invite_code: inviteCode };
+      }
+      const me = await api.post<User>("/auth/register/", body);
       setUser(me);
-      router.push("/");
+      router.push(safeRedirect(redirectTo));
     },
     [router]
   );

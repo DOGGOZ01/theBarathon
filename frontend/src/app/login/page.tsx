@@ -1,11 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 import { useAuth, isApiError } from "@/lib/auth-context";
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<main className="flex h-dvh items-center justify-center text-ink-soft">Chargement…</main>}>
+      <LoginPageInner />
+    </Suspense>
+  );
+}
+
+function LoginPageInner() {
   const { login } = useAuth();
+  const searchParams = useSearchParams();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -16,7 +26,7 @@ export default function LoginPage() {
     setError(null);
     setBusy(true);
     try {
-      await login(username, password);
+      await login(username, password, searchParams.get("next"));
     } catch (err) {
       setError(isApiError(err) ? err.message : "Connexion impossible");
     } finally {
@@ -69,7 +79,10 @@ export default function LoginPage() {
 
       <p className="mt-6 text-sm text-ink-soft">
         Pas encore de compte ?{" "}
-        <Link href="/register" className="font-medium text-ink underline underline-offset-4">
+        <Link
+          href={searchParams.get("next") ? `/register?next=${encodeURIComponent(searchParams.get("next")!)}` : "/register"}
+          className="font-medium text-ink underline underline-offset-4"
+        >
           S&apos;inscrire avec un code
         </Link>
       </p>

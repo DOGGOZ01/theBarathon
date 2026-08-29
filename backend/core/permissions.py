@@ -11,21 +11,25 @@ class IsAdminOrReadOnly(BasePermission):
 
 
 class IsAdminOrCreateByAnyAuthenticated(BasePermission):
-    """Read for any authenticated user, create for any authenticated user,
-    but edit/delete restricted to admins. Used for Place: anyone can add a
-    bar to a city, but only an admin can change or remove one."""
+    """Read for any authenticated user, create for any authenticated user.
+    PATCH (rename/re-photo only, enforced in the view) is allowed for the
+    place's own creator or an admin; PUT/DELETE stay admin-only."""
 
     def has_permission(self, request, view):
         if not (request.user and request.user.is_authenticated):
             return False
-        if request.method in SAFE_METHODS or request.method == "POST":
+        if request.method in SAFE_METHODS or request.method in ("POST", "PATCH"):
             return True
         return bool(request.user.is_superuser)
 
     def has_object_permission(self, request, view, obj):
         if request.method in SAFE_METHODS:
             return True
-        return bool(request.user and request.user.is_superuser)
+        if request.user and request.user.is_superuser:
+            return True
+        if request.method == "PATCH":
+            return obj.created_by_id == request.user.id
+        return False
 
 
 class IsAdmin(BasePermission):

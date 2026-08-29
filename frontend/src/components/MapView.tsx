@@ -84,15 +84,25 @@ interface MapViewProps {
   onPlaceClick?: (place: Place) => void;
   onCenterChange?: (lat: number, lng: number) => void;
   geolocate?: boolean;
+  focusPlaceId?: number | null;
 }
 
-export function MapView({ center, zoom = 14, places, onPlaceClick, onCenterChange, geolocate }: MapViewProps) {
+export function MapView({
+  center,
+  zoom = 14,
+  places,
+  onPlaceClick,
+  onCenterChange,
+  geolocate,
+  focusPlaceId,
+}: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const markersRef = useRef<Marker[]>([]);
   const placesRef = useRef(places);
   const onPlaceClickRef = useRef(onPlaceClick);
   const renderRef = useRef<() => void>(() => {});
+  const lastFocusedRef = useRef<number | null>(null);
 
   useEffect(() => {
     placesRef.current = places;
@@ -174,6 +184,11 @@ export function MapView({ center, zoom = 14, places, onPlaceClick, onCenterChang
     renderRef.current = renderMarkers;
 
     map.on("load", renderMarkers);
+    // "move" fires continuously during flyTo/easeTo zoom animations, not just
+    // once at the end — needed so clusters split apart live as the pins grow
+    // far enough apart, instead of staying frozen as one cluster marker
+    // until the animation finishes and only "moveend" fires.
+    map.on("move", renderMarkers);
     map.on("moveend", renderMarkers);
 
     if (onCenterChange) {
@@ -199,6 +214,25 @@ export function MapView({ center, zoom = 14, places, onPlaceClick, onCenterChang
       renderRef.current();
     }
   }, [places]);
+
+  useEffect(() => {
+    // Only fly once per distinct focusPlaceId — without this guard, any
+    // unrelated refetch of `places` (e.g. after adding/editing a place
+    // elsewhere on the map) re-runs this effect and yanks the map back to
+    // the focused pin, undoing whatever the user has panned/zoomed to since.
+    if (!focusPlaceId || lastFocusedRef.current === focusPlaceId) return;
+    const target = places.find((p) => p.id === focusPlaceId);
+    if (!target || !target.latitude || !target.longitude) return;
+
+    const flyToTarget = () => {
+      mapRef.current?.flyTo({ center: [Number(target.longitude), Number(target.latitude)], zoom: 20.5 });
+      lastFocusedRef.current = focusPlaceId;
+    };
+
+    const map = mapRef.current;
+    if (map?.loaded()) flyToTarget();
+    else map?.once("load", flyToTarget);
+  }, [focusPlaceId, places]);
 
   return <div ref={containerRef} className="h-full w-full" />;
 }

@@ -1,7 +1,7 @@
 from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 
-from .models import Review, ReviewPhoto
+from .models import CommentPhoto, Review, ReviewPhoto
 
 
 @receiver(post_save, sender=Review)
@@ -23,5 +23,11 @@ def delete_photo_file(sender, instance, **kwargs):
     # Having this receiver forces Django's collector to fetch+delete
     # ReviewPhoto rows individually (no fast-delete) even when cascading
     # from a Review/Place/City delete, so this always fires per photo.
+    if instance.image:
+        instance.image.delete(save=False)
+
+
+@receiver(post_delete, sender=CommentPhoto)
+def delete_comment_photo_file(sender, instance, **kwargs):
     if instance.image:
         instance.image.delete(save=False)

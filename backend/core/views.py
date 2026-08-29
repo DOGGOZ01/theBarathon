@@ -12,15 +12,21 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import City, InviteConfig, Place, Review, ReviewPhoto
+from . import reactions
+from .models import City, Comment, CommentPhoto, InviteConfig, Notification, Place, Review, ReviewPhoto
 from .permissions import IsAdmin, IsAdminOrCreateByAnyAuthenticated, IsAdminOrReadOnly, IsOwnerOrAdmin
 from .serializers import (
     CityReorderSerializer,
     CitySerializer,
+    CommentPhotoSerializer,
+    CommentSerializer,
     InviteConfigSerializer,
     LoginSerializer,
+    MeUpdateSerializer,
+    NotificationSerializer,
     PlaceDetailSerializer,
     PlaceListSerializer,
+    ReactionInputSerializer,
     RegisterSerializer,
     ReviewPhotoSerializer,
     ReviewSerializer,
@@ -30,6 +36,8 @@ from .serializers import (
 User = get_user_model()
 
 MAX_REVIEW_PHOTOS = 5
+MAX_COMMENT_PHOTOS = 3
+ACTIVITY_FEED_LIMIT = 40
 
 
 def _cookie_kwargs():
@@ -116,6 +124,14 @@ class LogoutView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
+        raw_refresh = request.COOKIES.get(settings.AUTH_COOKIE_REFRESH)
+        if raw_refresh:
+            try:
+                RefreshToken(raw_refresh).blacklist()
+            except TokenError:
+                # Already invalid/expired/blacklisted — nothing more to revoke.
+                pass
+
         response = Response(status=status.HTTP_204_NO_CONTENT)
         response.delete_cookie(settings.AUTH_COOKIE_ACCESS, path="/")
         response.delete_cookie(settings.AUTH_COOKIE_REFRESH, path="/")
@@ -126,6 +142,12 @@ class MeView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        return Response(UserSerializer(request.user).data)
+
+    def patch(self, request):
+        serializer = MeUpdateSerializer(request.user, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
         return Response(UserSerializer(request.user).data)
 
 
@@ -158,8 +180,11 @@ class CityViewSet(viewsets.ModelViewSet):
         return Response(CitySerializer(City.objects.filter(pk__in=city_ids), many=True).data)
 
 
+PLACE_NON_ADMIN_EDITABLE_FIELDS = {"name", "photo"}
+
+
 class PlaceViewSet(viewsets.ModelViewSet):
-    queryset = Place.objects.select_related("city").all()
+    queryset = Place.objects.select_related("city", "created_by").all()
     permission_classes = [IsAdminOrCreateByAnyAuthenticated]
 
     def get_serializer_class(self):
@@ -170,13 +195,25 @@ class PlaceViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
 
+    def perform_update(self, serializer):
+        if not self.request.user.is_superuser:
+            disallowed = set(serializer.validated_data) - PLACE_NON_ADMIN_EDITABLE_FIELDS
+            if disallowed:
+                raise PermissionDenied("Vous ne pouvez modifier que le nom et la photo de cet établissement.")
+        serializer.save()
+
+    @action(detail=False, methods=["get"], permission_classes=[IsAuthenticated])
+    def mine(self, request):
+        places = self.get_queryset().filter(created_by=request.user)
+        return Response(PlaceListSerializer(places, many=True, context=self.get_serializer_context()).data)
+
 
 class CityPlacesView(generics.ListCreateAPIView):
     serializer_class = PlaceListSerializer
     permission_classes = [IsAdminOrCreateByAnyAuthenticated]
 
     def get_queryset(self):
-        return Place.objects.filter(city_id=self.kwargs["city_id"])
+        return Place.objects.select_related("created_by").filter(city_id=self.kwargs["city_id"])
 
     def perform_create(self, serializer):
         city = get_object_or_404(City, pk=self.kwargs["city_id"])
@@ -198,7 +235,7 @@ class PlaceReviewsView(generics.ListCreateAPIView):
             return Response(
                 {"detail": "Vous avez déjà laissé un avis pour cet établissement."}, status=status.HTTP_409_CONFLICT
             )
-        serializer = self.get_serializer(data=request.data)
+        serializer = self.get_serializer(data=request.data, context={**self.get_serializer_context(), "place": place})
         serializer.is_valid(raise_exception=True)
         try:
             serializer.save(place=place, user=request.user)
@@ -243,6 +280,197 @@ class ReviewPhotoDetailView(generics.DestroyAPIView):
         super().check_object_permissions(request, obj)
         if obj.review.user_id != request.user.id and not request.user.is_superuser:
             raise PermissionDenied("Ce n'est pas votre photo.")
+
+
+class ReviewCommentsView(generics.ListCreateAPIView):
+    """Top-level replies to a review; each item's `replies` field carries the
+    full nested thread beneath it, so the frontend gets the whole tree in one
+    request."""
+
+    serializer_class = CommentSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_serializer_context(self):
+        return {"request": self.request}
+
+    def get_queryset(self):
+        return (
+            Comment.objects.filter(review_id=self.kwargs["review_id"], parent__isnull=True)
+            .select_related("user")
+            .prefetch_related("photos", "reactions", "replies")
+        )
+
+    def perform_create(self, serializer):
+        review = get_object_or_404(Review, pk=self.kwargs["review_id"])
+        comment = serializer.save(review=review, parent=None, user=self.request.user)
+        reactions.notify_reply(comment)
+
+
+class CommentRepliesView(generics.CreateAPIView):
+    serializer_class = CommentSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_serializer_context(self):
+        return {"request": self.request}
+
+    def perform_create(self, serializer):
+        parent = get_object_or_404(Comment, pk=self.kwargs["comment_id"])
+        comment = serializer.save(review=parent.review, parent=parent, user=self.request.user)
+        reactions.notify_reply(comment)
+
+
+class CommentDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Comment.objects.all().select_related("user", "review").prefetch_related(
+        "photos", "reactions", "replies"
+    )
+    serializer_class = CommentSerializer
+    permission_classes = [IsAuthenticated, IsOwnerOrAdmin]
+    http_method_names = ["get", "patch", "delete", "head", "options"]
+
+    def get_serializer_context(self):
+        return {"request": self.request}
+
+
+class CommentPhotosView(generics.ListCreateAPIView):
+    serializer_class = CommentPhotoSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return CommentPhoto.objects.filter(comment_id=self.kwargs["comment_id"])
+
+    def perform_create(self, serializer):
+        comment = get_object_or_404(Comment, pk=self.kwargs["comment_id"])
+        if comment.user_id != self.request.user.id and not self.request.user.is_superuser:
+            raise PermissionDenied("Ce n'est pas votre commentaire.")
+        if comment.photos.count() >= MAX_COMMENT_PHOTOS:
+            raise ValidationError({"detail": f"Maximum {MAX_COMMENT_PHOTOS} photos par commentaire."})
+        serializer.save(comment=comment)
+
+
+class CommentPhotoDetailView(generics.DestroyAPIView):
+    queryset = CommentPhoto.objects.all()
+    permission_classes = [IsAuthenticated]
+
+    def check_object_permissions(self, request, obj):
+        super().check_object_permissions(request, obj)
+        if obj.comment.user_id != request.user.id and not request.user.is_superuser:
+            raise PermissionDenied("Ce n'est pas votre photo.")
+
+
+class ReviewReactionView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, review_id):
+        review = get_object_or_404(Review, pk=review_id)
+        serializer = ReactionInputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return Response(reactions.toggle_and_format(request.user, review, serializer.validated_data["emoji"]))
+
+
+class CommentReactionView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, comment_id):
+        comment = get_object_or_404(Comment, pk=comment_id)
+        serializer = ReactionInputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return Response(reactions.toggle_and_format(request.user, comment, serializer.validated_data["emoji"]))
+
+
+class NotificationListView(generics.ListAPIView):
+    serializer_class = NotificationSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Notification.objects.filter(recipient=self.request.user).select_related(
+            "actor", "review", "review__place", "comment"
+        )[:50]
+
+
+class NotificationMarkReadView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        ids = request.data.get("ids")
+        qs = Notification.objects.filter(recipient=request.user, is_read=False)
+        if ids:
+            qs = qs.filter(pk__in=ids)
+        qs.update(is_read=True)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class NotificationUnreadCountView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        count = Notification.objects.filter(recipient=request.user, is_read=False).count()
+        return Response({"count": count})
+
+
+class ActivityFeedView(APIView):
+    """Recently added places (anyone) and recently added reviews/comments
+    (other users only), merged into one reverse-chronological feed."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        items = []
+
+        places = Place.objects.select_related("city", "created_by").order_by("-created_at")[:ACTIVITY_FEED_LIMIT]
+        for place in places:
+            items.append(
+                {
+                    "type": "place",
+                    "id": place.id,
+                    "created_at": place.created_at,
+                    "user": UserSerializer(place.created_by).data if place.created_by else None,
+                    "place_id": place.id,
+                    "place_name": place.name,
+                    "city_id": place.city_id,
+                    "text": "",
+                }
+            )
+
+        reviews = (
+            Review.objects.exclude(user=request.user)
+            .select_related("user", "place", "place__city")
+            .order_by("-created_at")[:ACTIVITY_FEED_LIMIT]
+        )
+        for review in reviews:
+            items.append(
+                {
+                    "type": "review",
+                    "id": review.id,
+                    "created_at": review.created_at,
+                    "user": UserSerializer(review.user).data,
+                    "place_id": review.place_id,
+                    "place_name": review.place.name,
+                    "city_id": review.place.city_id,
+                    "text": review.text[:140],
+                }
+            )
+
+        comments = (
+            Comment.objects.exclude(user=request.user)
+            .select_related("user", "review", "review__place", "review__place__city")
+            .order_by("-created_at")[:ACTIVITY_FEED_LIMIT]
+        )
+        for comment in comments:
+            items.append(
+                {
+                    "type": "comment",
+                    "id": comment.id,
+                    "created_at": comment.created_at,
+                    "user": UserSerializer(comment.user).data,
+                    "place_id": comment.review.place_id,
+                    "place_name": comment.review.place.name,
+                    "city_id": comment.review.place.city_id,
+                    "text": comment.text[:140],
+                }
+            )
+
+        items.sort(key=lambda i: i["created_at"], reverse=True)
+        return Response(items[:ACTIVITY_FEED_LIMIT])
 
 
 class InviteCodeView(APIView):

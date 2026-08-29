@@ -5,19 +5,38 @@ import Image from "next/image";
 import { api, mediaUrl } from "@/lib/api";
 import { StarRating } from "@/components/StarRating";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import type { Review, ReviewPhoto, User } from "@/lib/types";
+import { Avatar } from "@/components/Avatar";
+import { ReactionBar } from "@/components/ReactionBar";
+import { CommentThread } from "@/components/CommentThread";
+import { CommentComposer } from "@/components/CommentComposer";
+import { DRINKS_CRITERION_LABEL, type PlaceType, type ReactionSummary, type Review, type ReviewPhoto, type User } from "@/lib/types";
 
 interface ReviewCardProps {
   review: Review;
+  placeType: PlaceType;
   currentUser: User;
   onEdit: () => void;
   onDeleted: () => void;
   onPhotoClick: (photo: ReviewPhoto) => void;
+  onCommentsChanged: () => void;
 }
 
-export function ReviewCard({ review, currentUser, onEdit, onDeleted, onPhotoClick }: ReviewCardProps) {
+export function ReviewCard({
+  review,
+  placeType,
+  currentUser,
+  onEdit,
+  onDeleted,
+  onPhotoClick,
+  onCommentsChanged,
+}: ReviewCardProps) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [reaction, setReaction] = useState<ReactionSummary>({
+    reactions_summary: review.reactions_summary,
+    my_reaction: review.my_reaction,
+  });
+  const [replying, setReplying] = useState(false);
   const isOwner = review.user.id === currentUser.id;
   const canManage = isOwner || currentUser.is_admin;
 
@@ -33,11 +52,14 @@ export function ReviewCard({ review, currentUser, onEdit, onDeleted, onPhotoClic
   }
 
   return (
-    <article className="rounded-card border-2 border-ink bg-paper-raised p-4 shadow-hard-sm">
+    <article id={`review-${review.id}`} className="rounded-card border-2 border-ink bg-paper-raised p-4 shadow-hard-sm">
       <header className="mb-2 flex items-start justify-between gap-2">
-        <div>
-          <p className="font-medium">{review.user.username}</p>
-          <p className="text-xs text-ink-soft">{new Date(review.created_at).toLocaleDateString("fr-FR")}</p>
+        <div className="flex items-center gap-2">
+          <Avatar user={review.user} size={32} />
+          <div>
+            <p className="font-medium">{review.user.username}</p>
+            <p className="text-xs text-ink-soft">{new Date(review.created_at).toLocaleDateString("fr-FR")}</p>
+          </div>
         </div>
         {canManage && (
           <div className="flex gap-1">
@@ -61,10 +83,17 @@ export function ReviewCard({ review, currentUser, onEdit, onDeleted, onPhotoClic
         )}
       </header>
 
-      <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+      <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
         <RatingBadge label="Ambiance" value={review.rating_atmosphere} />
-        <RatingBadge label="Boissons" value={review.rating_drinks} />
+        {review.rating_drinks !== null && (
+          <RatingBadge label={DRINKS_CRITERION_LABEL[placeType]} value={review.rating_drinks} />
+        )}
         <RatingBadge label="Prix" value={review.rating_price} />
+        {review.amount_spent && (
+          <span className="inline-flex items-center gap-1 rounded-pill border-2 border-ink bg-paper px-2 py-0.5">
+            💶 {Number(review.amount_spent).toFixed(0)}€
+          </span>
+        )}
       </div>
 
       {review.text && <p className="text-sm leading-relaxed">{review.text}</p>}
@@ -84,6 +113,44 @@ export function ReviewCard({ review, currentUser, onEdit, onDeleted, onPhotoClic
               </button>
             );
           })}
+        </div>
+      )}
+
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <ReactionBar targetType="review" targetId={review.id} summary={reaction} onChange={setReaction} />
+        <button
+          type="button"
+          onClick={() => setReplying((v) => !v)}
+          className="text-xs font-medium text-ink-soft underline"
+        >
+          Répondre
+        </button>
+      </div>
+
+      {replying && (
+        <div className="mt-2">
+          <CommentComposer
+            target={{ type: "review", id: review.id }}
+            onCancel={() => setReplying(false)}
+            onSaved={() => {
+              setReplying(false);
+              onCommentsChanged();
+            }}
+          />
+        </div>
+      )}
+
+      {review.comments.length > 0 && (
+        <div className="mt-1">
+          {review.comments.map((comment) => (
+            <CommentThread
+              key={comment.id}
+              comment={comment}
+              currentUser={currentUser}
+              depth={0}
+              onChanged={onCommentsChanged}
+            />
+          ))}
         </div>
       )}
 

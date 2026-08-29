@@ -1,23 +1,42 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useRef, useState } from "react";
 import { useAuth, isApiError } from "@/lib/auth-context";
 
 export default function RegisterPage() {
+  return (
+    <Suspense fallback={<main className="flex h-dvh items-center justify-center text-ink-soft">Chargement…</main>}>
+      <RegisterPageInner />
+    </Suspense>
+  );
+}
+
+function RegisterPageInner() {
   const { register } = useAuth();
+  const searchParams = useSearchParams();
+  const nextParam = searchParams.get("next");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [inviteCode, setInviteCode] = useState("");
+  const [avatar, setAvatar] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+
+  function onAvatarSelected(file: File | null) {
+    setAvatar(file);
+    setAvatarPreview(file ? URL.createObjectURL(file) : null);
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setBusy(true);
     try {
-      await register(username, password, inviteCode);
+      await register(username, password, inviteCode, avatar, nextParam);
     } catch (err) {
       setError(isApiError(err) ? err.message : "Inscription impossible");
     } finally {
@@ -35,6 +54,30 @@ export default function RegisterPage() {
       </div>
 
       <form onSubmit={onSubmit} className="flex flex-col gap-4">
+        <div className="flex flex-col items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => avatarInputRef.current?.click()}
+            aria-label="Ajouter une photo de profil"
+            className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-full border-2 border-ink bg-paper-raised shadow-hard-sm"
+          >
+            {avatarPreview ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={avatarPreview} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <span className="text-2xl text-ink-soft">＋</span>
+            )}
+          </button>
+          <span className="text-xs text-ink-soft">Photo de profil (facultatif)</span>
+          <input
+            ref={avatarInputRef}
+            type="file"
+            accept="image/*"
+            hidden
+            onChange={(e) => onAvatarSelected(e.target.files?.[0] ?? null)}
+          />
+        </div>
+
         <label className="flex flex-col gap-1.5">
           <span className="text-sm font-medium">Identifiant</span>
           <input
@@ -80,7 +123,10 @@ export default function RegisterPage() {
 
       <p className="mt-6 text-sm text-ink-soft">
         Déjà un compte ?{" "}
-        <Link href="/login" className="font-medium text-ink underline underline-offset-4">
+        <Link
+          href={nextParam ? `/login?next=${encodeURIComponent(nextParam)}` : "/login"}
+          className="font-medium text-ink underline underline-offset-4"
+        >
           Se connecter
         </Link>
       </p>
