@@ -115,6 +115,13 @@ export default function AdminPage() {
       <h1 className="mb-5 font-display text-2xl">Panneau d&apos;administration</h1>
 
       <div className="flex flex-col gap-6">
+        <Link
+          href="/admin/users"
+          className="flex min-h-[44px] items-center justify-center rounded-block border-2 border-ink bg-paper-raised font-medium shadow-hard-sm active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
+        >
+          Gérer les utilisateurs
+        </Link>
+
         <InviteCodeCard />
 
         <section>

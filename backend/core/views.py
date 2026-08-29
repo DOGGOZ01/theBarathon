@@ -514,6 +514,22 @@ class UserProfileView(APIView):
         )
 
 
+class AdminUserListView(generics.ListAPIView):
+    queryset = User.objects.all().order_by("username")
+    serializer_class = UserSerializer
+    permission_classes = [IsAdmin]
+
+
+class AdminUserDetailView(generics.DestroyAPIView):
+    queryset = User.objects.all()
+    permission_classes = [IsAdmin]
+
+    def perform_destroy(self, instance):
+        if instance.id == self.request.user.id:
+            raise ValidationError({"detail": "Vous ne pouvez pas supprimer votre propre compte."})
+        instance.delete()
+
+
 class InviteCodeView(APIView):
     permission_classes = [IsAdmin]
 

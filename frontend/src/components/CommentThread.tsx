@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Avatar } from "@/components/Avatar";
 import { CommentComposer } from "@/components/CommentComposer";
+import { CommentList } from "@/components/CommentList";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Lightbox } from "@/components/Lightbox";
 import { ReactionBar } from "@/components/ReactionBar";
@@ -115,15 +116,7 @@ export function CommentThread({ comment, currentUser, depth, onChanged }: Commen
         </div>
       </div>
 
-      {comment.replies.map((reply) => (
-        <CommentThread
-          key={reply.id}
-          comment={reply}
-          currentUser={currentUser}
-          depth={depth + 1}
-          onChanged={onChanged}
-        />
-      ))}
+      <CommentList comments={comment.replies} currentUser={currentUser} depth={depth + 1} onChanged={onChanged} />
 
       <ConfirmDialog
         open={confirmOpen}

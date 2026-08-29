@@ -160,6 +160,25 @@ class RegistrationAvatarTests(TestCase):
         self.assertEqual(res.status_code, 201, res.data)
         self.assertFalse(res.data["avatar"])
 
+    def test_username_over_25_chars_is_rejected(self):
+        invite = InviteConfig.get_solo()
+        client = APIClient()
+        res = client.post(
+            "/api/auth/register/",
+            {"username": "x" * 26, "password": "correct horse battery staple", "invite_code": invite.code},
+        )
+        self.assertEqual(res.status_code, 400, res.data)
+        self.assertIn("username", res.data)
+
+    def test_username_of_exactly_25_chars_is_accepted(self):
+        invite = InviteConfig.get_solo()
+        client = APIClient()
+        res = client.post(
+            "/api/auth/register/",
+            {"username": "x" * 25, "password": "correct horse battery staple", "invite_code": invite.code},
+        )
+        self.assertEqual(res.status_code, 201, res.data)
+
 
 class PlaceTypeAndSpendTests(TestCase):
     def setUp(self):
@@ -473,3 +492,45 @@ class PlaceActivityNotificationAndProfileTests(TestCase):
         types = {item["type"] for item in res.data["activity"]}
         self.assertEqual(types, {"review"})
         self.assertEqual(len(res.data["activity"]), 1)
+
+
+class AdminUserManagementTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser(username="root", password="pw")
+        self.alice = User.objects.create_user(username="alice", password="pw")
+
+    def client_as(self, user):
+        client = APIClient()
+        client.force_authenticate(user=user)
+        return client
+
+    def test_non_admin_cannot_list_users(self):
+        client = self.client_as(self.alice)
+        res = client.get("/api/admin/users/")
+        self.assertEqual(res.status_code, 403)
+
+    def test_admin_can_list_users(self):
+        client = self.client_as(self.admin)
+        res = client.get("/api/admin/users/")
+        self.assertEqual(res.status_code, 200, res.data)
+        usernames = {u["username"] for u in res.data}
+        self.assertEqual(usernames, {"root", "alice"})
+
+    def test_admin_can_delete_another_user(self):
+        client = self.client_as(self.admin)
+        res = client.delete(f"/api/admin/users/{self.alice.id}/")
+        self.assertEqual(res.status_code, 204)
+        self.assertFalse(User.objects.filter(id=self.alice.id).exists())
+
+    def test_admin_cannot_delete_own_account(self):
+        client = self.client_as(self.admin)
+        res = client.delete(f"/api/admin/users/{self.admin.id}/")
+        self.assertEqual(res.status_code, 400, res.data)
+        self.assertTrue(User.objects.filter(id=self.admin.id).exists())
+
+    def test_non_admin_cannot_delete_users(self):
+        other = User.objects.create_user(username="bob", password="pw")
+        client = self.client_as(self.alice)
+        res = client.delete(f"/api/admin/users/{other.id}/")
+        self.assertEqual(res.status_code, 403)
+        self.assertTrue(User.objects.filter(id=other.id).exists())

@@ -79,10 +79,14 @@ function RegisterPageInner() {
         </div>
 
         <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium">Identifiant</span>
+          <div className="flex items-baseline justify-between">
+            <span className="text-sm font-medium">Identifiant</span>
+            <span className="text-xs text-ink-soft">{username.length}/25</span>
+          </div>
           <input
             required
             autoFocus
+            maxLength={25}
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             className="min-h-[44px] rounded-block border-2 border-ink bg-paper-raised px-4 py-2"

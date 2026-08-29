@@ -55,7 +55,6 @@ export default function UserProfilePage() {
           <Avatar user={profile.user} size={88} />
         </button>
         <h1 className="font-display text-xl">{profile.user.username}</h1>
-        {profile.user.is_admin && <p className="text-xs text-ink-soft">Administrateur</p>}
       </header>
 
       <div className="mt-6 flex gap-1 rounded-block border-2 border-ink bg-paper-raised p-1">

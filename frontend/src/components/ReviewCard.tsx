@@ -8,7 +8,7 @@ import { StarRating } from "@/components/StarRating";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Avatar } from "@/components/Avatar";
 import { ReactionBar } from "@/components/ReactionBar";
-import { CommentThread } from "@/components/CommentThread";
+import { CommentList } from "@/components/CommentList";
 import { CommentComposer } from "@/components/CommentComposer";
 import { DRINKS_CRITERION_LABEL, type PlaceType, type ReactionSummary, type Review, type ReviewPhoto, type User } from "@/lib/types";
 
@@ -143,15 +143,7 @@ export function ReviewCard({
 
       {review.comments.length > 0 && (
         <div className="mt-1">
-          {review.comments.map((comment) => (
-            <CommentThread
-              key={comment.id}
-              comment={comment}
-              currentUser={currentUser}
-              depth={0}
-              onChanged={onCommentsChanged}
-            />
-          ))}
+          <CommentList comments={review.comments} currentUser={currentUser} depth={0} onChanged={onCommentsChanged} />
         </div>
       )}
 

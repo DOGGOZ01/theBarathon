@@ -23,7 +23,7 @@ class MeUpdateSerializer(serializers.ModelSerializer):
 
 
 class RegisterSerializer(serializers.Serializer):
-    username = serializers.CharField(max_length=150)
+    username = serializers.CharField(max_length=25)
     password = serializers.CharField(write_only=True)
     invite_code = serializers.CharField(write_only=True)
     avatar = serializers.ImageField(required=False, allow_null=True)
