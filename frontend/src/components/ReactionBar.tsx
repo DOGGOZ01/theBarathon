@@ -62,7 +62,7 @@ export function ReactionBar({ targetType, targetId, summary, onChange }: Reactio
       {pickerOpen && (
         <>
           <button aria-label="Fermer" className="fixed inset-0 z-[900]" onClick={() => setPickerOpen(false)} />
-          <div className="absolute bottom-full left-0 z-[901] mb-1 flex gap-1 rounded-pill border-2 border-ink bg-paper-raised p-1.5 shadow-hard-sm">
+          <div className="anim-pop-in absolute bottom-full left-0 z-[901] mb-1 flex origin-bottom-left gap-1 rounded-pill border-2 border-ink bg-paper-raised p-1.5 shadow-hard-sm">
             {ALL_EMOJIS.map((emoji) => (
               <button
                 key={emoji}

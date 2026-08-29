@@ -63,7 +63,7 @@ export function CommentComposer({ target, onSaved, onCancel }: CommentComposerPr
   }
 
   return (
-    <form onSubmit={onSubmit} className="flex flex-col gap-2 rounded-block border-2 border-ink bg-paper p-3">
+    <form onSubmit={onSubmit} className="anim-fade-in-up flex flex-col gap-2 rounded-block border-2 border-ink bg-paper p-3">
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}

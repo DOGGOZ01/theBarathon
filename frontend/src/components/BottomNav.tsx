@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { useChrome } from "@/lib/chrome-context";
 import { Avatar } from "@/components/Avatar";
 
 function NavIcon({ kind }: { kind: "cities" | "activity" | "notifications" | "admin" | "profile" }) {
@@ -50,6 +51,7 @@ function NavIcon({ kind }: { kind: "cities" | "activity" | "notifications" | "ad
 export function BottomNav() {
   const pathname = usePathname();
   const { user, logout, refreshUser } = useAuth();
+  const { hideBottomNav } = useChrome();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [avatarBusy, setAvatarBusy] = useState(false);
@@ -80,6 +82,7 @@ export function BottomNav() {
   }
 
   if (pathname === "/login" || pathname === "/register") return null;
+  if (hideBottomNav) return null;
   if (!user) return null;
 
   const items: Array<{
@@ -113,7 +116,7 @@ export function BottomNav() {
                 <span className={`relative ${active ? "rounded-block bg-yellow px-3 py-1 -mt-1" : "px-3 py-1"}`}>
                   <NavIcon kind={item.kind} />
                   {!!item.badge && (
-                    <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full border border-paper-raised bg-bad px-1 text-[9px] font-bold leading-none text-paper">
+                    <span className="anim-pop-in absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full border border-paper-raised bg-bad px-1 text-[9px] font-bold leading-none text-paper">
                       {item.badge > 9 ? "9+" : item.badge}
                     </span>
                   )}
@@ -138,10 +141,10 @@ export function BottomNav() {
         <div className="fixed inset-0 z-[2000] flex items-end" role="dialog" aria-modal="true">
           <button
             aria-label="Fermer"
-            className="absolute inset-0 bg-ink/40"
+            className="anim-fade-in absolute inset-0 bg-ink/40"
             onClick={() => setSheetOpen(false)}
           />
-          <div className="relative w-full rounded-t-[24px] border-2 border-b-0 border-ink bg-paper-raised p-5 pb-8">
+          <div className="anim-sheet-in relative w-full rounded-t-[24px] border-2 border-b-0 border-ink bg-paper-raised p-5 pb-8">
             <div className="mx-auto mb-4 h-1.5 w-10 rounded-pill bg-line" />
             <div className="flex items-center gap-3">
               <button

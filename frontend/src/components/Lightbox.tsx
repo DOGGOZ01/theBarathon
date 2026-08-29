@@ -22,7 +22,7 @@ export function Lightbox({ images, index, onClose, onIndexChange }: LightboxProp
   }, [index, images.length, onClose, onIndexChange]);
 
   return (
-    <div className="fixed inset-0 z-[1000] flex flex-col bg-ink/95" role="dialog" aria-modal="true">
+    <div className="anim-fade-in fixed inset-0 z-[1000] flex flex-col bg-ink/95" role="dialog" aria-modal="true">
       <div className="flex justify-between p-4">
         <span className="text-sm text-paper/70">
           {index + 1} / {images.length}

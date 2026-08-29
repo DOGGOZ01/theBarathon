@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { api } from "@/lib/api";
+import { useHideBottomNav } from "@/lib/chrome-context";
 import { PLACE_TYPE_LABELS, type Place, type PlaceType } from "@/lib/types";
 
 const PLACE_TYPE_OPTIONS: PlaceType[] = ["bar", "restaurant", "endroit"];
@@ -20,6 +21,7 @@ export function PlaceFormSheet({ cityId, place, pin, onSaved, onCancel }: PlaceF
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  useHideBottomNav();
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -55,10 +57,10 @@ export function PlaceFormSheet({ cityId, place, pin, onSaved, onCancel }: PlaceF
   }
 
   return (
-    <div className="fixed inset-0 z-[950] flex items-end justify-center bg-ink/40 p-0" role="dialog" aria-modal="true">
+    <div className="anim-fade-in fixed inset-0 z-[950] flex items-end justify-center bg-ink/40 p-0" role="dialog" aria-modal="true">
       <form
         onSubmit={onSubmit}
-        className="w-full max-w-md rounded-t-[24px] border-2 border-b-0 border-ink bg-paper-raised p-5 pb-8"
+        className="anim-sheet-in w-full max-w-md rounded-t-[24px] border-2 border-b-0 border-ink bg-paper-raised p-5 pb-8"
       >
         <div className="mx-auto mb-4 h-1.5 w-10 rounded-pill bg-line" />
         <h2 className="mb-4 font-display text-lg">{place ? "Modifier l'établissement" : "Nouvel établissement"}</h2>

@@ -23,8 +23,8 @@ export function ConfirmDialog({
 
   return (
     <div className="fixed inset-0 z-[1100] flex items-center justify-center p-6" role="dialog" aria-modal="true">
-      <button aria-label="Fermer" className="absolute inset-0 bg-ink/50" onClick={onCancel} />
-      <div className="relative w-full max-w-sm rounded-card border-2 border-ink bg-paper-raised p-5 shadow-hard">
+      <button aria-label="Fermer" className="anim-fade-in absolute inset-0 bg-ink/50" onClick={onCancel} />
+      <div className="anim-scale-in relative w-full max-w-sm rounded-card border-2 border-ink bg-paper-raised p-5 shadow-hard">
         <p className="font-display text-lg">{title}</p>
         {description && <p className="mt-2 text-sm text-ink-soft">{description}</p>}
         <div className="mt-5 flex gap-2">

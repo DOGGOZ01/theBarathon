@@ -2,7 +2,9 @@ import type { Metadata, Viewport } from "next";
 import { Golos_Text, Unbounded } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
+import { ChromeProvider } from "@/lib/chrome-context";
 import { BottomNav } from "@/components/BottomNav";
+import { PageTransition } from "@/components/PageTransition";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
 
 const golos = Golos_Text({
@@ -43,8 +45,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="fr" className={`${golos.variable} ${unbounded.variable} h-full`}>
       <body className="min-h-full flex flex-col antialiased">
         <AuthProvider>
-          <div className="flex-1 pb-[76px]">{children}</div>
-          <BottomNav />
+          <ChromeProvider>
+            <PageTransition>{children}</PageTransition>
+            <BottomNav />
+          </ChromeProvider>
         </AuthProvider>
         <ServiceWorkerRegister />
       </body>

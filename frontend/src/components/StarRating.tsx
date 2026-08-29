@@ -37,7 +37,7 @@ export function StarRating({ value, max = 5, size = 22, onChange, label }: StarR
                 <path d={STAR_PATH} fill="var(--color-paper-raised)" stroke="var(--color-ink)" strokeWidth="1.4" strokeLinejoin="round" />
               </svg>
               <span
-                className="absolute inset-0 overflow-hidden"
+                className="absolute inset-0 overflow-hidden transition-[width] duration-200 ease-out"
                 style={{ width: `${fillPct}%` }}
               >
                 <svg viewBox="0 0 24 24" width={size} height={size}>

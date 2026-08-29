@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useState } from "react";
+import { useHideBottomNav } from "@/lib/chrome-context";
 import type { Place } from "@/lib/types";
 
 const MapView = dynamic(() => import("@/components/MapView").then((m) => m.MapView), {
@@ -20,9 +21,10 @@ interface MapPickerOverlayProps {
 
 export function MapPickerOverlay({ title, center, zoom = 13, contextPlaces = [], onConfirm, onCancel }: MapPickerOverlayProps) {
   const [liveCenter, setLiveCenter] = useState<[number, number]>(center);
+  useHideBottomNav();
 
   return (
-    <div className="fixed inset-0 z-[900] bg-paper">
+    <div className="anim-fade-in fixed inset-0 z-[900] bg-paper">
       <div className="pointer-events-none absolute inset-x-0 top-0 z-[500] flex items-center justify-between p-3">
         <span className="pointer-events-auto rounded-pill border-2 border-ink bg-paper-raised px-3 py-2 text-sm font-medium shadow-hard-sm">
           {title}

@@ -53,7 +53,13 @@ export function InviteCodeCard() {
           onClick={copy}
           className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-block border-2 border-ink bg-paper text-xs font-medium"
         >
-          {copied ? "✓" : "copier"}
+          {copied ? (
+            <span key="check" className="anim-pop-in inline-block">
+              ✓
+            </span>
+          ) : (
+            "copier"
+          )}
         </button>
       </div>
       <button

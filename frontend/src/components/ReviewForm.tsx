@@ -105,7 +105,7 @@ export function ReviewForm({ placeId, placeType, existingReview, onSaved, onCanc
   }
 
   return (
-    <form onSubmit={onSubmit} className="flex flex-col gap-4 rounded-card border-2 border-ink bg-paper-raised p-4 shadow-hard">
+    <form onSubmit={onSubmit} className="anim-fade-in-up flex flex-col gap-4 rounded-card border-2 border-ink bg-paper-raised p-4 shadow-hard">
       <div className="grid grid-cols-1 gap-3">
         <RatingRow label="Ambiance" value={atmosphere} onChange={setAtmosphere} />
         {hasDrinks && <RatingRow label={DRINKS_CRITERION_LABEL[placeType]} value={drinks} onChange={setDrinks} />}
