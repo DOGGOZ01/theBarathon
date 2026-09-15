@@ -5,7 +5,7 @@ import { api } from "@/lib/api";
 import { useHideBottomNav } from "@/lib/chrome-context";
 import { PLACE_TYPE_LABELS, type Place, type PlaceType } from "@/lib/types";
 
-const PLACE_TYPE_OPTIONS: PlaceType[] = ["bar", "restaurant", "endroit"];
+const PLACE_TYPE_OPTIONS: PlaceType[] = ["bar", "restaurant", "endroit", "balade", "evenement"];
 
 interface PlaceFormSheetProps {
   cityId: number;
@@ -15,13 +15,31 @@ interface PlaceFormSheetProps {
   onCancel: () => void;
 }
 
+// <input type="datetime-local"> wants "YYYY-MM-DDTHH:mm" in local time, with
+// no timezone suffix; the backend gives/wants a UTC ISO string. `new Date()`
+// parses a naive "YYYY-MM-DDTHH:mm" string as local time and formats getters
+// (getFullYear/getHours/…) in local time too, so this round-trips correctly
+// through both conversions without a UTC/local mismatch.
+function isoToDatetimeLocal(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export function PlaceFormSheet({ cityId, place, pin, onSaved, onCancel }: PlaceFormSheetProps) {
   const [name, setName] = useState(place?.name ?? "");
   const [placeType, setPlaceType] = useState<PlaceType>(place?.place_type ?? "bar");
+  const [eventDate, setEventDate] = useState(isoToDatetimeLocal(place?.event_date ?? null));
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   useHideBottomNav();
+
+  // The type picker only shows up at creation (type is fixed afterwards —
+  // see the comment below), so once editing an existing place the type to
+  // check against is the place's own, not the (unused) placeType state.
+  const isEvenement = (place?.place_type ?? placeType) === "evenement";
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -31,8 +49,9 @@ export function PlaceFormSheet({ cityId, place, pin, onSaved, onCancel }: PlaceF
       const fd = new FormData();
       fd.append("name", name);
       if (!place) {
-        // Editing only ever touches name/photo — city, position and type
-        // are set once at creation and aren't part of this form afterwards.
+        // Editing only ever touches name/photo/event_date — city, position
+        // and type are set once at creation and aren't part of this form
+        // afterwards.
         fd.append("city", String(cityId));
         fd.append("place_type", placeType);
         if (pin) {
@@ -43,6 +62,7 @@ export function PlaceFormSheet({ cityId, place, pin, onSaved, onCancel }: PlaceF
           fd.append("longitude", pin[1].toFixed(6));
         }
       }
+      if (isEvenement) fd.append("event_date", new Date(eventDate).toISOString());
       if (photoFile) fd.append("photo", photoFile);
 
       const saved = place
@@ -82,13 +102,13 @@ export function PlaceFormSheet({ cityId, place, pin, onSaved, onCancel }: PlaceF
           {!place && (
             <div className="flex flex-col gap-1.5">
               <span className="text-sm font-medium">Type</span>
-              <div className="flex gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 {PLACE_TYPE_OPTIONS.map((t) => (
                   <button
                     key={t}
                     type="button"
                     onClick={() => setPlaceType(t)}
-                    className={`min-h-[40px] flex-1 rounded-block border-2 border-ink px-2 text-sm font-medium ${
+                    className={`min-h-[40px] rounded-block border-2 border-ink px-2 text-sm font-medium ${
                       placeType === t ? "bg-yellow" : "bg-paper"
                     }`}
                   >
@@ -97,6 +117,18 @@ export function PlaceFormSheet({ cityId, place, pin, onSaved, onCancel }: PlaceF
                 ))}
               </div>
             </div>
+          )}
+          {isEvenement && (
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium">Date de l&apos;événement</span>
+              <input
+                required
+                type="datetime-local"
+                value={eventDate}
+                onChange={(e) => setEventDate(e.target.value)}
+                className="min-h-[44px] rounded-block border-2 border-ink bg-paper px-3 py-2"
+              />
+            </label>
           )}
           <label className="flex flex-col gap-1.5">
             <span className="text-sm font-medium">Photo {place && "(facultatif — laissez vide pour ne pas la changer)"}</span>

@@ -11,7 +11,13 @@ import { ReviewForm } from "@/components/ReviewForm";
 import { ReviewCard } from "@/components/ReviewCard";
 import { Lightbox } from "@/components/Lightbox";
 import { PlaceFormSheet } from "@/components/PlaceFormSheet";
-import { DRINKS_CRITERION_LABEL, PLACE_TYPES_WITH_DRINKS, type PlaceDetail, type ReviewPhoto } from "@/lib/types";
+import {
+  DRINKS_CRITERION_LABEL,
+  PLACE_TYPES_WITH_CRITERIA,
+  PLACE_TYPES_WITH_DRINKS,
+  type PlaceDetail,
+  type ReviewPhoto,
+} from "@/lib/types";
 
 export default function PlaceDetailPage() {
   return (
@@ -30,6 +36,8 @@ function PlaceDetailPageInner() {
   const [editing, setEditing] = useState(false);
   const [editingPlace, setEditingPlace] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [topBusy, setTopBusy] = useState(false);
+  const [topError, setTopError] = useState<string | null>(null);
 
   function load() {
     api
@@ -75,6 +83,20 @@ function PlaceDetailPageInner() {
     load();
   }
 
+  async function onTopVote() {
+    if (!place) return;
+    setTopError(null);
+    setTopBusy(true);
+    try {
+      const res = await api.post<{ top_count: number; next_available_at: string }>(`/places/${place.id}/top/`);
+      setPlace((prev) => (prev ? { ...prev, top_count: res.top_count, my_top_next_available_at: res.next_available_at } : prev));
+    } catch (err) {
+      setTopError(err instanceof Error ? err.message : "Impossible de voter");
+    } finally {
+      setTopBusy(false);
+    }
+  }
+
   if (error) {
     return (
       <main className="p-6">
@@ -88,8 +110,10 @@ function PlaceDetailPageInner() {
   }
 
   const photo = mediaUrl(place.photo);
+  const hasCriteria = PLACE_TYPES_WITH_CRITERIA.includes(place.place_type);
   const hasDrinks = PLACE_TYPES_WITH_DRINKS.includes(place.place_type);
   const canEditPlace = user.is_admin || place.created_by?.id === user.id;
+  const topCooldownRemaining = place.my_top_next_available_at ? formatTopCooldown(place.my_top_next_available_at) : null;
 
   // Arriving here via a deep link (Nouveautés/Notifications) should return
   // there on "back", not always to the city map — those are two different
@@ -138,6 +162,11 @@ function PlaceDetailPageInner() {
             {place.created_by && (
               <p className="mt-1 text-xs text-ink-soft">Ajouté par {place.created_by.username}</p>
             )}
+            {place.place_type === "evenement" && place.event_date && (
+              <p className="mt-1 text-xs font-medium text-ink">
+                📅 {new Date(place.event_date).toLocaleString("fr-FR", { dateStyle: "long", timeStyle: "short" })}
+              </p>
+            )}
           </div>
           <div className="shrink-0 rounded-block border-2 border-ink bg-yellow px-3 py-1.5 text-center shadow-hard-sm">
             <p className="font-display text-xl leading-none">{Number(place.avg_overall).toFixed(1)}</p>
@@ -145,17 +174,43 @@ function PlaceDetailPageInner() {
           </div>
         </header>
 
-        <div className="mt-4 flex flex-col gap-2 rounded-card border-2 border-ink bg-paper-raised p-4 shadow-hard-sm">
-          <SubRating label="Ambiance" value={Number(place.avg_atmosphere)} />
-          {hasDrinks && <SubRating label={DRINKS_CRITERION_LABEL[place.place_type]} value={Number(place.avg_drinks)} />}
-          <SubRating label="Rapport qualité-prix" value={Number(place.avg_price)} />
-          {Number(place.avg_spent) > 0 && (
-            <div className="flex items-center justify-between border-t-2 border-line pt-2">
-              <span className="text-sm text-ink-soft">Prix moyen dépensé</span>
-              <span className="text-sm font-medium">{Number(place.avg_spent).toFixed(0)}€</span>
-            </div>
+        {(hasCriteria || Number(place.avg_spent) > 0) && (
+          <div className="mt-4 flex flex-col gap-2 rounded-card border-2 border-ink bg-paper-raised p-4 shadow-hard-sm">
+            {hasCriteria && (
+              <>
+                <SubRating label="Ambiance" value={Number(place.avg_atmosphere)} />
+                {hasDrinks && (
+                  <SubRating label={DRINKS_CRITERION_LABEL[place.place_type]} value={Number(place.avg_drinks)} />
+                )}
+                <SubRating label="Rapport qualité-prix" value={Number(place.avg_price)} />
+              </>
+            )}
+            {Number(place.avg_spent) > 0 && (
+              <div className="flex items-center justify-between border-t-2 border-line pt-2">
+                <span className="text-sm text-ink-soft">Prix moyen dépensé</span>
+                <span className="text-sm font-medium">{Number(place.avg_spent).toFixed(0)}€</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="mt-4 flex items-center justify-between gap-3 rounded-card border-2 border-ink bg-paper-raised p-4 shadow-hard-sm">
+          <div>
+            <p className="text-xs text-ink-soft">Top établissement</p>
+            <p className="font-display text-xl leading-none">{place.top_count}</p>
+          </div>
+          {ownReview && (
+            <button
+              type="button"
+              onClick={onTopVote}
+              disabled={topBusy || !!topCooldownRemaining}
+              className="min-h-[44px] rounded-block border-2 border-ink bg-yellow px-4 text-sm font-semibold shadow-hard-sm transition active:translate-x-[1px] active:translate-y-[1px] active:shadow-none disabled:opacity-50"
+            >
+              {topBusy ? "…" : topCooldownRemaining ? `Top (${topCooldownRemaining})` : "Top"}
+            </button>
           )}
         </div>
+        {topError && <p className="mt-2 rounded-block border-2 border-bad bg-bad/10 px-3 py-2 text-sm text-bad">{topError}</p>}
 
         {gallery.length > 0 && (
           <section className="mt-5">
@@ -244,6 +299,15 @@ function PlaceDetailPageInner() {
       )}
     </main>
   );
+}
+
+function formatTopCooldown(nextAvailableAt: string): string | null {
+  const diffMs = new Date(nextAvailableAt).getTime() - Date.now();
+  if (diffMs <= 0) return null;
+  const hours = Math.floor(diffMs / 3_600_000);
+  if (hours > 0) return `${hours} h`;
+  const minutes = Math.max(1, Math.round(diffMs / 60_000));
+  return `${minutes} min`;
 }
 
 function SubRating({ label, value }: { label: string; value: number }) {

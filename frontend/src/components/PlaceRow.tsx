@@ -15,7 +15,12 @@ export function PlaceRow({ place }: { place: Place }) {
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate font-medium">{place.name}</p>
-        <p className="text-xs text-ink-soft">{PLACE_TYPE_LABELS[place.place_type]}</p>
+        <p className="text-xs text-ink-soft">
+          {PLACE_TYPE_LABELS[place.place_type]}
+          {place.place_type === "evenement" && place.event_date && (
+            <> · {new Date(place.event_date).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}</>
+          )}
+        </p>
       </div>
       <div className="shrink-0 rounded-block border-2 border-ink bg-yellow px-2 py-1 text-center">
         <p className="font-display text-sm leading-none">{Number(place.avg_overall).toFixed(1)}</p>

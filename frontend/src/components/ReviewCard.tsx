@@ -85,11 +85,12 @@ export function ReviewCard({
       </header>
 
       <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-        <RatingBadge label="Ambiance" value={review.rating_atmosphere} />
+        {review.rating_atmosphere !== null && <RatingBadge label="Ambiance" value={review.rating_atmosphere} />}
         {review.rating_drinks !== null && (
           <RatingBadge label={DRINKS_CRITERION_LABEL[placeType]} value={review.rating_drinks} />
         )}
-        <RatingBadge label="Prix" value={review.rating_price} />
+        {review.rating_price !== null && <RatingBadge label="Prix" value={review.rating_price} />}
+        {review.rating_overall !== null && <RatingBadge label="Note globale" value={review.rating_overall} />}
         {review.amount_spent && (
           <span className="inline-flex items-center gap-1 rounded-pill border-2 border-ink bg-paper px-2 py-0.5">
             💶 {Number(review.amount_spent).toFixed(0)}€

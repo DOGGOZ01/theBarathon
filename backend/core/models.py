@@ -114,18 +114,27 @@ class Place(models.Model):
     TYPE_BAR = "bar"
     TYPE_RESTAURANT = "restaurant"
     TYPE_ENDROIT = "endroit"
+    TYPE_BALADE = "balade"
+    TYPE_EVENEMENT = "evenement"
     TYPE_CHOICES = [
         (TYPE_BAR, "Bar"),
         (TYPE_RESTAURANT, "Restaurant"),
         (TYPE_ENDROIT, "Endroit"),
+        (TYPE_BALADE, "Balade"),
+        (TYPE_EVENEMENT, "Événement"),
     ]
     # Bar and restaurant collect the same 3 criteria (atmosphere/drinks/price);
     # "endroit" is a lighter-weight spot with no drinks rating at all.
     TYPES_WITH_DRINKS = (TYPE_BAR, TYPE_RESTAURANT)
+    # "balade" and "evenement" have no per-criterion breakdown at all —
+    # reviews only carry a single direct overall rating (Review.rating_overall).
+    TYPES_WITH_CRITERIA = (TYPE_BAR, TYPE_RESTAURANT, TYPE_ENDROIT)
 
     city = models.ForeignKey(City, on_delete=models.CASCADE, related_name="places")
     name = models.CharField(max_length=50)
     place_type = models.CharField(max_length=20, choices=TYPE_CHOICES, default=TYPE_BAR)
+    # Only used (and required) for TYPE_EVENEMENT: the event's date/time.
+    event_date = models.DateTimeField(null=True, blank=True)
     photo = models.ImageField(upload_to="places/", blank=True, null=True)
     latitude = models.DecimalField(max_digits=9, decimal_places=6)
     longitude = models.DecimalField(max_digits=9, decimal_places=6)
@@ -165,6 +174,7 @@ class Place(models.Model):
             a=models.Avg("rating_atmosphere"),
             d=models.Avg("rating_drinks"),
             p=models.Avg("rating_price"),
+            o=models.Avg("rating_overall"),
             s=models.Avg("amount_spent"),
         )
         atmosphere = aggregates["a"] or 0
@@ -174,6 +184,8 @@ class Place(models.Model):
         has_reviews = self.reviews.exists()
         if not has_reviews:
             overall = 0
+        elif self.place_type not in self.TYPES_WITH_CRITERIA:
+            overall = aggregates["o"] or 0
         elif self.place_type == self.TYPE_ENDROIT:
             overall = (atmosphere + price) / 2
         else:
@@ -187,13 +199,36 @@ class Place(models.Model):
         self.save(update_fields=["avg_atmosphere", "avg_drinks", "avg_price", "avg_overall", "avg_spent"])
 
 
+class PlaceTopVote(models.Model):
+    """One row per 'Top' click by a user on a place they've reviewed.
+    Multiple rows per (user, place) are expected over time — the cooldown
+    between two votes from the same user on the same place (see
+    core.top_votes.COOLDOWN) is enforced in core.top_votes, not by a DB
+    constraint."""
+
+    place = models.ForeignKey(Place, on_delete=models.CASCADE, related_name="top_votes")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="place_top_votes")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.user} topped {self.place} at {self.created_at}"
+
+
 class Review(models.Model):
     place = models.ForeignKey(Place, on_delete=models.CASCADE, related_name="reviews")
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="reviews")
-    rating_atmosphere = models.PositiveSmallIntegerField(validators=RATING_VALIDATORS)
-    # Null for reviews of a Place.TYPE_ENDROIT place (no drinks criterion there).
+    # Null for reviews of a Place.TYPE_BALADE place (no criteria there, see rating_overall).
+    rating_atmosphere = models.PositiveSmallIntegerField(validators=RATING_VALIDATORS, null=True, blank=True)
+    # Null unless the place is a Place.TYPES_WITH_DRINKS type.
     rating_drinks = models.PositiveSmallIntegerField(validators=RATING_VALIDATORS, null=True, blank=True)
-    rating_price = models.PositiveSmallIntegerField(validators=RATING_VALIDATORS)
+    # Null for reviews of a Place.TYPE_BALADE place (no criteria there, see rating_overall).
+    rating_price = models.PositiveSmallIntegerField(validators=RATING_VALIDATORS, null=True, blank=True)
+    # Set only for reviews of a Place.TYPE_BALADE place: a single direct
+    # rating with no atmosphere/drinks/price breakdown.
+    rating_overall = models.PositiveSmallIntegerField(validators=RATING_VALIDATORS, null=True, blank=True)
     amount_spent = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     text = models.TextField(max_length=2000, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)

@@ -84,6 +84,8 @@ interface MapViewProps {
   onPlaceClick?: (place: Place) => void;
   onCenterChange?: (lat: number, lng: number) => void;
   geolocate?: boolean;
+  /** Extra bottom margin (px) to push the bottom-left GeolocateControl above other fixed UI overlapping that corner. */
+  geolocateOffset?: number;
   focusPlaceId?: number | null;
 }
 
@@ -94,6 +96,7 @@ export function MapView({
   onPlaceClick,
   onCenterChange,
   geolocate,
+  geolocateOffset,
   focusPlaceId,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -214,6 +217,12 @@ export function MapView({
       renderRef.current();
     }
   }, [places]);
+
+  useEffect(() => {
+    if (!geolocate) return;
+    const corner = containerRef.current?.querySelector<HTMLElement>(".maplibregl-ctrl-bottom-left");
+    if (corner) corner.style.marginBottom = geolocateOffset ? `${geolocateOffset}px` : "";
+  }, [geolocate, geolocateOffset]);
 
   useEffect(() => {
     // Only fly once per distinct focusPlaceId — without this guard, any

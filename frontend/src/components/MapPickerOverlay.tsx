@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useHideBottomNav } from "@/lib/chrome-context";
 import type { Place } from "@/lib/types";
 
@@ -19,9 +19,75 @@ interface MapPickerOverlayProps {
   onCancel: () => void;
 }
 
+// Tighter than the city-wide default zoom — when we do center on the user's
+// real position, the pin should start near street level, not zoomed out to
+// the whole city.
+const GEOLOCATED_ZOOM = 17;
+const GEOLOCATION_TIMEOUT_MS = 6000;
+// Gap between the bottom confirm panel and the GeolocateControl sitting above it.
+const GEOLOCATE_CONTROL_GAP = 16;
+
 export function MapPickerOverlay({ title, center, zoom = 13, contextPlaces = [], onConfirm, onCancel }: MapPickerOverlayProps) {
+  // Map only mounts once we know where to start it: either the user's
+  // position (if geolocation is available/granted) or the city's default
+  // center as a fallback. Resolved once on mount, not re-run per prop change.
+  const [startCenter, setStartCenter] = useState<[number, number] | null>(null);
+  const [startZoom, setStartZoom] = useState(zoom);
   const [liveCenter, setLiveCenter] = useState<[number, number]>(center);
+  const [geolocateOffset, setGeolocateOffset] = useState(0);
+  const bottomPanelRef = useRef<HTMLDivElement>(null);
   useHideBottomNav();
+
+  // The confirm panel's height varies with content/viewport width (the coordinates
+  // text can wrap on narrow screens), so measure it instead of hardcoding an offset.
+  useEffect(() => {
+    const el = bottomPanelRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setGeolocateOffset(entry.contentRect.height + GEOLOCATE_CONTROL_GAP);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!navigator.geolocation) {
+      setStartCenter(center);
+      return;
+    }
+    let settled = false;
+    const fallback = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      setStartCenter(center);
+    }, GEOLOCATION_TIMEOUT_MS);
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(fallback);
+        const userCenter: [number, number] = [pos.coords.latitude, pos.coords.longitude];
+        setStartZoom(GEOLOCATED_ZOOM);
+        setLiveCenter(userCenter);
+        setStartCenter(userCenter);
+      },
+      () => {
+        // Denied, unavailable, or errored — fall back to the city center.
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(fallback);
+        setStartCenter(center);
+      },
+      { enableHighAccuracy: true, timeout: GEOLOCATION_TIMEOUT_MS, maximumAge: 60_000 }
+    );
+
+    return () => {
+      settled = true;
+      window.clearTimeout(fallback);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- resolve once on mount; center/zoom are only the fallback, not expected to change under this overlay
+  }, []);
 
   return (
     <div className="anim-fade-in fixed inset-0 z-[900] bg-paper">
@@ -39,7 +105,18 @@ export function MapPickerOverlay({ title, center, zoom = 13, contextPlaces = [],
       </div>
 
       <div className="h-full w-full">
-        <MapView center={center} zoom={zoom} places={contextPlaces} onCenterChange={(lat, lng) => setLiveCenter([lat, lng])} />
+        {startCenter ? (
+          <MapView
+            center={startCenter}
+            zoom={startZoom}
+            places={contextPlaces}
+            onCenterChange={(lat, lng) => setLiveCenter([lat, lng])}
+            geolocate
+            geolocateOffset={geolocateOffset}
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center text-ink-soft">Localisation…</div>
+        )}
       </div>
 
       {/* Fixed pin: stays centered on screen while the map pans underneath it — the pin's tip marks the exact point that will be dropped. */}
@@ -55,7 +132,7 @@ export function MapPickerOverlay({ title, center, zoom = 13, contextPlaces = [],
         </svg>
       </div>
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[500] p-4">
+      <div ref={bottomPanelRef} className="pointer-events-none absolute inset-x-0 bottom-0 z-[500] p-4">
         <div className="pointer-events-auto mx-auto flex max-w-md items-center justify-between gap-3 rounded-card border-2 border-ink bg-paper-raised p-3 shadow-hard">
           <p className="text-sm text-ink-soft">
             {liveCenter[0].toFixed(5)}, {liveCenter[1].toFixed(5)}

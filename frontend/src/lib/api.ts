@@ -85,7 +85,16 @@ export async function apiFetch<T = unknown>(path: string, options: RequestOption
       : { "Content-Type": "application/json", ...(options.headers ?? {}) },
   });
 
-  if (res.status === 401 && !options.skipAuthRetry && !path.startsWith("/auth/")) {
+  // Only login/register/refresh must be excluded from the retry-via-refresh
+  // path (retrying those would loop or mask bad credentials as a session
+  // hiccup). Everything else — including /auth/me/ — needs the retry: the
+  // whole "/auth/" prefix was excluded before, so once the 30min access
+  // token expired, the next /auth/me/ call (e.g. on a page reload) 401'd
+  // without ever attempting a refresh, logging the user out even though
+  // their 14-day refresh_token cookie was still valid.
+  const isAuthBootstrapPath =
+    path.startsWith("/auth/login") || path.startsWith("/auth/register") || path.startsWith("/auth/refresh");
+  if (res.status === 401 && !options.skipAuthRetry && !isAuthBootstrapPath) {
     const refreshed = await tryRefresh();
     if (refreshed) {
       return apiFetch<T>(path, { ...options, skipAuthRetry: true });

@@ -4,7 +4,14 @@ import { useRef, useState } from "react";
 import Image from "next/image";
 import { api, mediaUrl, ApiError } from "@/lib/api";
 import { StarRating } from "@/components/StarRating";
-import { DRINKS_CRITERION_LABEL, PLACE_TYPES_WITH_DRINKS, type PlaceType, type Review, type ReviewPhoto } from "@/lib/types";
+import {
+  DRINKS_CRITERION_LABEL,
+  PLACE_TYPES_WITH_CRITERIA,
+  PLACE_TYPES_WITH_DRINKS,
+  type PlaceType,
+  type Review,
+  type ReviewPhoto,
+} from "@/lib/types";
 
 const MAX_PHOTOS = 5;
 
@@ -17,10 +24,12 @@ interface ReviewFormProps {
 }
 
 export function ReviewForm({ placeId, placeType, existingReview, onSaved, onCancel }: ReviewFormProps) {
+  const hasCriteria = PLACE_TYPES_WITH_CRITERIA.includes(placeType);
   const hasDrinks = PLACE_TYPES_WITH_DRINKS.includes(placeType);
   const [atmosphere, setAtmosphere] = useState(existingReview?.rating_atmosphere ?? 0);
   const [drinks, setDrinks] = useState(existingReview?.rating_drinks ?? 0);
   const [price, setPrice] = useState(existingReview?.rating_price ?? 0);
+  const [overall, setOverall] = useState(existingReview?.rating_overall ?? 0);
   const [amountSpent, setAmountSpent] = useState(existingReview?.amount_spent ?? "");
   const [text, setText] = useState(existingReview?.text ?? "");
   const [photos, setPhotos] = useState<ReviewPhoto[]>(existingReview?.photos ?? []);
@@ -59,19 +68,34 @@ export function ReviewForm({ placeId, placeType, existingReview, onSaved, onCanc
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!atmosphere || !price || (hasDrinks && !drinks)) {
-      setError(hasDrinks ? "Notez les trois critères" : "Notez les deux critères");
+    if (hasCriteria) {
+      if (!atmosphere || !price || (hasDrinks && !drinks)) {
+        setError(hasDrinks ? "Notez les trois critères" : "Notez les deux critères");
+        return;
+      }
+    } else if (!overall) {
+      setError("Notez l'établissement");
       return;
     }
     setBusy(true);
     try {
-      const body = {
-        rating_atmosphere: atmosphere,
-        rating_drinks: hasDrinks ? drinks : null,
-        rating_price: price,
-        amount_spent: amountSpent.trim() === "" ? null : amountSpent,
-        text,
-      };
+      const body = hasCriteria
+        ? {
+            rating_atmosphere: atmosphere,
+            rating_drinks: hasDrinks ? drinks : null,
+            rating_price: price,
+            rating_overall: null,
+            amount_spent: amountSpent.trim() === "" ? null : amountSpent,
+            text,
+          }
+        : {
+            rating_atmosphere: null,
+            rating_drinks: null,
+            rating_price: null,
+            rating_overall: overall,
+            amount_spent: amountSpent.trim() === "" ? null : amountSpent,
+            text,
+          };
       const review = savedReviewId
         ? await api.patch<Review>(`/reviews/${savedReviewId}/`, body)
         : await api.post<Review>(`/places/${placeId}/reviews/`, body);
@@ -107,9 +131,15 @@ export function ReviewForm({ placeId, placeType, existingReview, onSaved, onCanc
   return (
     <form onSubmit={onSubmit} className="anim-fade-in-up flex flex-col gap-4 rounded-card border-2 border-ink bg-paper-raised p-4 shadow-hard">
       <div className="grid grid-cols-1 gap-3">
-        <RatingRow label="Ambiance" value={atmosphere} onChange={setAtmosphere} />
-        {hasDrinks && <RatingRow label={DRINKS_CRITERION_LABEL[placeType]} value={drinks} onChange={setDrinks} />}
-        <RatingRow label="Rapport qualité-prix" value={price} onChange={setPrice} />
+        {hasCriteria ? (
+          <>
+            <RatingRow label="Ambiance" value={atmosphere} onChange={setAtmosphere} />
+            {hasDrinks && <RatingRow label={DRINKS_CRITERION_LABEL[placeType]} value={drinks} onChange={setDrinks} />}
+            <RatingRow label="Rapport qualité-prix" value={price} onChange={setPrice} />
+          </>
+        ) : (
+          <RatingRow label="Note globale" value={overall} onChange={setOverall} />
+        )}
       </div>
 
       <label className="flex flex-col gap-1.5">

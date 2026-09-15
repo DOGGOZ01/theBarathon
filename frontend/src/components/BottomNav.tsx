@@ -184,6 +184,13 @@ export function BottomNav() {
             >
               Mes avis
             </Link>
+            <Link
+              href="/leaderboard"
+              onClick={() => setSheetOpen(false)}
+              className="mt-2 flex min-h-[44px] w-full items-center justify-center rounded-block border-2 border-ink bg-paper font-medium shadow-hard-sm active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
+            >
+              Classement
+            </Link>
             <button
               type="button"
               onClick={() => {

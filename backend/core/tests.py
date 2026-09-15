@@ -1,12 +1,14 @@
 import io
+from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
+from django.utils import timezone
 from PIL import Image
 from rest_framework.test import APIClient
 
-from .models import City, Comment, InviteConfig, Notification, Place, Reaction, Review
+from .models import City, Comment, InviteConfig, Notification, Place, PlaceTopVote, Reaction, Review
 
 User = get_user_model()
 
@@ -224,6 +226,59 @@ class PlaceTypeAndSpendTests(TestCase):
         self.assertEqual(res.status_code, 201, res.data)
         self.assertIsNone(res.data["rating_drinks"])
 
+    def test_balade_review_without_criteria_rating_is_rejected(self):
+        place = make_place(self.alice, place_type=Place.TYPE_BALADE)
+        client = self.client_as(self.bob)
+        res = client.post(f"/api/places/{place.id}/reviews/", {"text": "Sympa"})
+        self.assertEqual(res.status_code, 400, res.data)
+        self.assertIn("rating_overall", res.data)
+
+    def test_balade_review_only_needs_overall_rating(self):
+        place = make_place(self.alice, place_type=Place.TYPE_BALADE)
+        client = self.client_as(self.bob)
+        res = client.post(
+            f"/api/places/{place.id}/reviews/",
+            {"rating_overall": 4, "text": "Belle balade", "amount_spent": "3.50"},
+        )
+        self.assertEqual(res.status_code, 201, res.data)
+        self.assertIsNone(res.data["rating_atmosphere"])
+        self.assertIsNone(res.data["rating_drinks"])
+        self.assertIsNone(res.data["rating_price"])
+        self.assertEqual(res.data["rating_overall"], 4)
+
+        place.refresh_from_db()
+        self.assertEqual(place.avg_overall, 4)
+        self.assertEqual(place.avg_atmosphere, 0)
+        self.assertEqual(place.avg_spent, 3.5)
+
+    def test_balade_review_ignores_criteria_ratings_if_sent_anyway(self):
+        place = make_place(self.alice, place_type=Place.TYPE_BALADE)
+        client = self.client_as(self.bob)
+        res = client.post(
+            f"/api/places/{place.id}/reviews/",
+            {"rating_overall": 5, "rating_atmosphere": 4, "rating_drinks": 4, "rating_price": 2},
+        )
+        self.assertEqual(res.status_code, 201, res.data)
+        self.assertIsNone(res.data["rating_atmosphere"])
+        self.assertIsNone(res.data["rating_drinks"])
+        self.assertIsNone(res.data["rating_price"])
+
+    def test_evenement_review_only_needs_overall_rating(self):
+        place = make_place(self.alice, place_type=Place.TYPE_EVENEMENT)
+        client = self.client_as(self.bob)
+        res = client.post(
+            f"/api/places/{place.id}/reviews/",
+            {"rating_overall": 5, "text": "Super soirée"},
+        )
+        self.assertEqual(res.status_code, 201, res.data)
+        self.assertIsNone(res.data["rating_atmosphere"])
+        self.assertIsNone(res.data["rating_drinks"])
+        self.assertIsNone(res.data["rating_price"])
+        self.assertEqual(res.data["rating_overall"], 5)
+
+        place.refresh_from_db()
+        self.assertEqual(place.avg_overall, 5)
+
     def test_amount_spent_average_ignores_reviews_that_omitted_it(self):
         place = make_place(self.alice, place_type=Place.TYPE_BAR)
         Review.objects.create(
@@ -261,6 +316,41 @@ class PlaceTypeAndSpendTests(TestCase):
         place = make_place(self.alice)
         client = self.client_as(admin)
         res = client.patch(f"/api/places/{place.id}/", {"city": other_city.id})
+        self.assertEqual(res.status_code, 200, res.data)
+
+    def test_evenement_requires_event_date_on_creation(self):
+        city = City.objects.create(name="Paris", country="France", latitude=48.85, longitude=2.35)
+        client = self.client_as(self.alice)
+        res = client.post(
+            "/api/places/",
+            {"city": city.id, "name": "Concert", "place_type": "evenement", "latitude": 48.85, "longitude": 2.35},
+        )
+        self.assertEqual(res.status_code, 400, res.data)
+        self.assertIn("event_date", res.data)
+
+    def test_evenement_with_event_date_is_created(self):
+        city = City.objects.create(name="Paris", country="France", latitude=48.85, longitude=2.35)
+        client = self.client_as(self.alice)
+        res = client.post(
+            "/api/places/",
+            {
+                "city": city.id,
+                "name": "Concert",
+                "place_type": "evenement",
+                "event_date": "2026-10-01T20:00:00Z",
+                "latitude": 48.85,
+                "longitude": 2.35,
+            },
+        )
+        self.assertEqual(res.status_code, 201, res.data)
+        self.assertIsNotNone(res.data["event_date"])
+
+    def test_owner_can_update_event_date(self):
+        place = make_place(self.alice, place_type=Place.TYPE_EVENEMENT)
+        place.event_date = "2026-10-01T20:00:00Z"
+        place.save(update_fields=["event_date"])
+        client = self.client_as(self.alice)
+        res = client.patch(f"/api/places/{place.id}/", {"event_date": "2026-10-02T21:00:00Z"})
         self.assertEqual(res.status_code, 200, res.data)
 
     def test_mine_endpoint_returns_only_own_places(self):
@@ -534,3 +624,104 @@ class AdminUserManagementTests(TestCase):
         res = client.delete(f"/api/admin/users/{other.id}/")
         self.assertEqual(res.status_code, 403)
         self.assertTrue(User.objects.filter(id=other.id).exists())
+
+
+class PlaceTopVoteAndLeaderboardTests(TestCase):
+    def setUp(self):
+        self.alice = User.objects.create_user(username="alice", password="pw")
+        self.bob = User.objects.create_user(username="bob", password="pw")
+
+    def client_as(self, user):
+        client = APIClient()
+        client.force_authenticate(user=user)
+        return client
+
+    def test_top_vote_requires_a_review_first(self):
+        place = make_place(self.alice)
+        client = self.client_as(self.bob)
+        res = client.post(f"/api/places/{place.id}/top/")
+        self.assertEqual(res.status_code, 403, res.data)
+
+    def test_top_vote_succeeds_after_reviewing(self):
+        place = make_place(self.alice)
+        Review.objects.create(place=place, user=self.bob, rating_atmosphere=4, rating_drinks=4, rating_price=4)
+        client = self.client_as(self.bob)
+        res = client.post(f"/api/places/{place.id}/top/")
+        self.assertEqual(res.status_code, 201, res.data)
+        self.assertEqual(res.data["top_count"], 1)
+        self.assertIsNotNone(res.data["next_available_at"])
+
+    def test_top_vote_is_blocked_within_cooldown(self):
+        place = make_place(self.alice)
+        Review.objects.create(place=place, user=self.bob, rating_atmosphere=4, rating_drinks=4, rating_price=4)
+        client = self.client_as(self.bob)
+        first = client.post(f"/api/places/{place.id}/top/")
+        self.assertEqual(first.status_code, 201, first.data)
+        second = client.post(f"/api/places/{place.id}/top/")
+        self.assertEqual(second.status_code, 429, second.data)
+        self.assertEqual(place.top_votes.count(), 1)
+
+    def test_top_vote_available_again_after_cooldown(self):
+        place = make_place(self.alice)
+        Review.objects.create(place=place, user=self.bob, rating_atmosphere=4, rating_drinks=4, rating_price=4)
+        vote = PlaceTopVote.objects.create(place=place, user=self.bob)
+        PlaceTopVote.objects.filter(pk=vote.pk).update(created_at=timezone.now() - timedelta(hours=25))
+        client = self.client_as(self.bob)
+        res = client.post(f"/api/places/{place.id}/top/")
+        self.assertEqual(res.status_code, 201, res.data)
+        self.assertEqual(place.top_votes.count(), 2)
+
+    def test_place_leaderboard_orders_by_top_count(self):
+        popular = make_place(self.alice)
+        popular.name = "Popular"
+        popular.save(update_fields=["name"])
+        Place.objects.create(
+            city=popular.city, name="Quiet", place_type=Place.TYPE_BAR, latitude=48.85, longitude=2.35, created_by=self.alice
+        )
+        Review.objects.create(place=popular, user=self.bob, rating_atmosphere=4, rating_drinks=4, rating_price=4)
+        client = self.client_as(self.bob)
+        client.post(f"/api/places/{popular.id}/top/")
+
+        res = client.get("/api/leaderboard/places/")
+        self.assertEqual(res.status_code, 200, res.data)
+        names = [row["place"]["name"] for row in res.data["results"]]
+        self.assertEqual(names[0], "Popular")
+        self.assertIn("Quiet", names)
+
+    def test_place_leaderboard_search_keeps_global_rank(self):
+        popular = make_place(self.alice)
+        popular.name = "Popular"
+        popular.save(update_fields=["name"])
+        Place.objects.create(
+            city=popular.city, name="Quiet", place_type=Place.TYPE_BAR, latitude=48.85, longitude=2.35, created_by=self.alice
+        )
+        Review.objects.create(place=popular, user=self.bob, rating_atmosphere=4, rating_drinks=4, rating_price=4)
+        client = self.client_as(self.bob)
+        client.post(f"/api/places/{popular.id}/top/")
+
+        res = client.get("/api/leaderboard/places/?search=Quiet")
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertEqual(len(res.data["results"]), 1)
+        self.assertEqual(res.data["results"][0]["rank"], 2)
+
+    def test_user_leaderboard_ranks_by_combined_score(self):
+        make_place(self.alice)  # alice: +5 for adding a place
+        place = Place.objects.filter(created_by=self.alice).first()
+        Review.objects.create(
+            place=place, user=self.bob, rating_atmosphere=4, rating_drinks=4, rating_price=4
+        )  # bob: +3 for a review
+        client = self.client_as(self.alice)
+        res = client.get("/api/leaderboard/users/")
+        self.assertEqual(res.status_code, 200, res.data)
+        usernames = [row["user"]["username"] for row in res.data["results"]]
+        self.assertEqual(usernames[0], "alice")
+        self.assertEqual(res.data["results"][0]["rank"], 1)
+
+    def test_user_leaderboard_pagination_has_more(self):
+        for i in range(15):
+            User.objects.create_user(username=f"user{i}", password="pw")
+        client = self.client_as(self.alice)
+        res = client.get("/api/leaderboard/users/?limit=5&offset=0")
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertEqual(len(res.data["results"]), 5)
+        self.assertTrue(res.data["has_more"])

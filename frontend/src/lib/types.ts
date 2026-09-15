@@ -16,24 +16,35 @@ export interface City {
   created_at: string;
 }
 
-export type PlaceType = "bar" | "restaurant" | "endroit";
+export type PlaceType = "bar" | "restaurant" | "endroit" | "balade" | "evenement";
 
 export const PLACE_TYPE_LABELS: Record<PlaceType, string> = {
   bar: "Bar",
   restaurant: "Restaurant",
   endroit: "Endroit",
+  balade: "Balade",
+  evenement: "Événement",
 };
 
 // Bar and restaurant share all 3 rating criteria; "endroit" has no drinks criterion.
 export const PLACE_TYPES_WITH_DRINKS: PlaceType[] = ["bar", "restaurant"];
 
+// Types that use the atmosphere/price criteria breakdown at all — "balade"
+// and "evenement" have none of it, just a single direct overall rating
+// (Review.rating_overall).
+export const PLACE_TYPES_WITH_CRITERIA: PlaceType[] = ["bar", "restaurant", "endroit"];
+
 // Same underlying field (rating_drinks/avg_drinks) everywhere — only the
 // displayed label changes, since "Boissons" alone reads oddly for a
 // restaurant where the criterion covers food and drinks together.
+// (Never read for "balade"/"evenement" — outside PLACE_TYPES_WITH_DRINKS —
+// but a Record<PlaceType, string> needs an entry for every type.)
 export const DRINKS_CRITERION_LABEL: Record<PlaceType, string> = {
   bar: "Boissons",
   restaurant: "Cuisine & Boissons",
   endroit: "Boissons",
+  balade: "Boissons",
+  evenement: "Boissons",
 };
 
 export interface Place {
@@ -41,6 +52,8 @@ export interface Place {
   city: number;
   name: string;
   place_type: PlaceType;
+  // Only set (and only meaningful) for place_type "evenement".
+  event_date: string | null;
   photo: string | null;
   latitude: string;
   longitude: string;
@@ -49,6 +62,11 @@ export interface Place {
   avg_price: string;
   avg_overall: string;
   avg_spent: string;
+  top_count: number;
+  // Set only while the current user is on cooldown for this place's Top
+  // button (null once they're eligible to vote again, or if they've never
+  // voted).
+  my_top_next_available_at: string | null;
   created_by: User | null;
 }
 
@@ -103,9 +121,10 @@ export interface Review extends ReactionSummary {
   id: number;
   place: number;
   user: User;
-  rating_atmosphere: number;
+  rating_atmosphere: number | null;
   rating_drinks: number | null;
-  rating_price: number;
+  rating_price: number | null;
+  rating_overall: number | null;
   amount_spent: string | null;
   text: string;
   photos: ReviewPhoto[];
@@ -158,4 +177,24 @@ export interface UserProfile {
   user: User;
   places: Place[];
   activity: ActivityItem[];
+}
+
+export interface UserLeaderboardRow {
+  rank: number;
+  user: User;
+  score: number;
+  reviews_count: number;
+  places_count: number;
+  reactions_count: number;
+}
+
+export interface PlaceLeaderboardRow {
+  rank: number;
+  place: Place;
+}
+
+export interface LeaderboardPage<T> {
+  results: T[];
+  total: number;
+  has_more: boolean;
 }

@@ -1,7 +1,10 @@
+from collections import defaultdict
+
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
 from django.db import IntegrityError, transaction
-from django.db.models import Max
+from django.db.models import Count, Max
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, status, viewsets
 from rest_framework.decorators import action
@@ -12,8 +15,8 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from . import reactions
-from .models import City, Comment, CommentPhoto, InviteConfig, Notification, Place, Review, ReviewPhoto
+from . import reactions, top_votes
+from .models import City, Comment, CommentPhoto, InviteConfig, Notification, Place, Reaction, Review, ReviewPhoto
 from .permissions import IsAdmin, IsAdminOrCreateByAnyAuthenticated, IsAdminOrReadOnly, IsOwnerOrAdmin
 from .serializers import (
     CityReorderSerializer,
@@ -180,7 +183,7 @@ class CityViewSet(viewsets.ModelViewSet):
         return Response(CitySerializer(City.objects.filter(pk__in=city_ids), many=True).data)
 
 
-PLACE_NON_ADMIN_EDITABLE_FIELDS = {"name", "photo"}
+PLACE_NON_ADMIN_EDITABLE_FIELDS = {"name", "photo", "event_date"}
 
 
 class PlaceViewSet(viewsets.ModelViewSet):
@@ -199,7 +202,9 @@ class PlaceViewSet(viewsets.ModelViewSet):
         if not self.request.user.is_superuser:
             disallowed = set(serializer.validated_data) - PLACE_NON_ADMIN_EDITABLE_FIELDS
             if disallowed:
-                raise PermissionDenied("Vous ne pouvez modifier que le nom et la photo de cet établissement.")
+                raise PermissionDenied(
+                    "Vous ne pouvez modifier que le nom, la photo et la date de cet établissement."
+                )
         serializer.save()
 
     @action(detail=False, methods=["get"], permission_classes=[IsAuthenticated])
@@ -248,6 +253,24 @@ class PlaceReviewsView(generics.ListCreateAPIView):
             )
         reactions.notify_place_activity(request.user, place, review)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class PlaceTopVoteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, place_id):
+        place = get_object_or_404(Place, pk=place_id)
+        try:
+            next_at = top_votes.cast(place, request.user)
+        except top_votes.TopVoteError as exc:
+            body = {"detail": exc.message}
+            if exc.next_available_at is not None:
+                body["next_available_at"] = exc.next_available_at
+            return Response(body, status=exc.status_code)
+        return Response(
+            {"top_count": place.top_votes.count(), "next_available_at": next_at},
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class ReviewViewSet(viewsets.ModelViewSet):
@@ -512,6 +535,119 @@ class UserProfileView(APIView):
                 "activity": items[: self.PROFILE_ACTIVITY_LIMIT],
             }
         )
+
+
+def _parse_paging(request, default_limit=10, max_limit=50):
+    try:
+        offset = int(request.query_params.get("offset", 0))
+    except ValueError:
+        offset = 0
+    try:
+        limit = int(request.query_params.get("limit", default_limit))
+    except ValueError:
+        limit = default_limit
+    return max(0, offset), max(1, min(limit, max_limit))
+
+
+# Combined-score weights for the user leaderboard: adding a place is worth
+# more than writing a review, which in turn outweighs a single reaction
+# received — a rough proxy for how much effort/value each action represents.
+LEADERBOARD_REVIEW_WEIGHT = 3
+LEADERBOARD_PLACE_WEIGHT = 5
+LEADERBOARD_REACTION_WEIGHT = 1
+
+
+class UserLeaderboardView(APIView):
+    """Ranks every user by a combined activity score. Rank is computed over
+    the full ranking first, then `search` filters which rows are returned —
+    so a searched-for user still shows their true position, not a position
+    within the filtered subset."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        search = request.query_params.get("search", "").strip().lower()
+        offset, limit = _parse_paging(request)
+
+        users = list(User.objects.all())
+        reviews_count = {row["user_id"]: row["c"] for row in Review.objects.values("user_id").annotate(c=Count("id"))}
+        places_count = {
+            row["created_by_id"]: row["c"]
+            for row in Place.objects.exclude(created_by=None).values("created_by_id").annotate(c=Count("id"))
+        }
+
+        # Reactions RECEIVED (on this user's reviews/comments), not given —
+        # Reaction uses a GenericForeignKey so there's no direct FK join;
+        # with a group this small, one pass in Python over every reaction
+        # row is simpler and cheap enough.
+        review_owner = dict(Review.objects.values_list("id", "user_id"))
+        comment_owner = dict(Comment.objects.values_list("id", "user_id"))
+        review_ct_id = ContentType.objects.get_for_model(Review).id
+        comment_ct_id = ContentType.objects.get_for_model(Comment).id
+        reactions_received = defaultdict(int)
+        for content_type_id, object_id in Reaction.objects.values_list("content_type_id", "object_id"):
+            if content_type_id == review_ct_id:
+                owner_id = review_owner.get(object_id)
+            elif content_type_id == comment_ct_id:
+                owner_id = comment_owner.get(object_id)
+            else:
+                owner_id = None
+            if owner_id is not None:
+                reactions_received[owner_id] += 1
+
+        def score(u):
+            return (
+                reviews_count.get(u.id, 0) * LEADERBOARD_REVIEW_WEIGHT
+                + places_count.get(u.id, 0) * LEADERBOARD_PLACE_WEIGHT
+                + reactions_received.get(u.id, 0) * LEADERBOARD_REACTION_WEIGHT
+            )
+
+        scores = {u.id: score(u) for u in users}
+        ranked = sorted(users, key=lambda u: (-scores[u.id], u.username.lower()))
+        rows = list(enumerate(ranked, start=1))
+        if search:
+            rows = [(rank, u) for rank, u in rows if search in u.username.lower()]
+
+        total = len(rows)
+        page = rows[offset : offset + limit]
+        results = [
+            {
+                "rank": rank,
+                "user": UserSerializer(u).data,
+                "score": scores[u.id],
+                "reviews_count": reviews_count.get(u.id, 0),
+                "places_count": places_count.get(u.id, 0),
+                "reactions_count": reactions_received.get(u.id, 0),
+            }
+            for rank, u in page
+        ]
+        return Response({"results": results, "total": total, "has_more": offset + limit < total})
+
+
+class PlaceLeaderboardView(APIView):
+    """Ranks every place by its Top vote count, same search-after-ranking
+    behavior as UserLeaderboardView."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        search = request.query_params.get("search", "").strip().lower()
+        offset, limit = _parse_paging(request)
+
+        places = list(
+            Place.objects.select_related("city", "created_by")
+            .annotate(top_votes_count=Count("top_votes"))
+            .order_by("-top_votes_count", "name")
+        )
+        rows = list(enumerate(places, start=1))
+        if search:
+            rows = [(rank, p) for rank, p in rows if search in p.name.lower()]
+
+        total = len(rows)
+        page = rows[offset : offset + limit]
+        serialized = PlaceListSerializer([p for _, p in page], many=True, context={"request": request}).data
+        results = [{"rank": rank, "place": data} for (rank, _), data in zip(page, serialized)]
+        return Response({"results": results, "total": total, "has_more": offset + limit < total})
 
 
 class AdminUserListView(generics.ListAPIView):

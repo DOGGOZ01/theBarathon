@@ -2,7 +2,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 
-from . import reactions
+from . import reactions, top_votes
 from .models import REACTION_EMOJIS, City, Comment, CommentPhoto, InviteConfig, Notification, Place, Review, ReviewPhoto
 
 User = get_user_model()
@@ -81,8 +81,24 @@ class ReactionInputSerializer(serializers.Serializer):
     emoji = serializers.ChoiceField(choices=REACTION_EMOJIS)
 
 
-class PlaceListSerializer(serializers.ModelSerializer):
+class PlaceTopFieldsMixin:
+    """Adds top_count + my_top_next_available_at to a Place serializer."""
+
+    def get_top_count(self, obj):
+        return obj.top_votes.count()
+
+    def get_my_top_next_available_at(self, obj):
+        request = self.context.get("request")
+        user = request.user if request else None
+        if not (user and user.is_authenticated):
+            return None
+        return top_votes.next_available_at(obj, user)
+
+
+class PlaceListSerializer(PlaceTopFieldsMixin, serializers.ModelSerializer):
     created_by = UserSerializer(read_only=True)
+    top_count = serializers.SerializerMethodField()
+    my_top_next_available_at = serializers.SerializerMethodField()
 
     class Meta:
         model = Place
@@ -91,6 +107,7 @@ class PlaceListSerializer(serializers.ModelSerializer):
             "city",
             "name",
             "place_type",
+            "event_date",
             "photo",
             "latitude",
             "longitude",
@@ -99,6 +116,8 @@ class PlaceListSerializer(serializers.ModelSerializer):
             "avg_price",
             "avg_overall",
             "avg_spent",
+            "top_count",
+            "my_top_next_available_at",
             "created_by",
         )
         read_only_fields = (
@@ -110,6 +129,18 @@ class PlaceListSerializer(serializers.ModelSerializer):
             "avg_spent",
             "created_by",
         )
+
+    def validate(self, attrs):
+        place_type = attrs.get("place_type", self.instance.place_type if self.instance else None)
+        if place_type == Place.TYPE_EVENEMENT:
+            existing_date = self.instance.event_date if self.instance else None
+            if attrs.get("event_date", existing_date) is None:
+                raise serializers.ValidationError(
+                    {"event_date": "La date est requise pour un événement."}
+                )
+        elif "event_date" in attrs:
+            attrs["event_date"] = None
+        return attrs
 
 
 class ReviewPhotoSerializer(serializers.ModelSerializer):
@@ -199,7 +230,14 @@ class ReviewSerializer(ReactionFieldsMixin, serializers.ModelSerializer):
     comments = serializers.SerializerMethodField()
     reactions_summary = serializers.SerializerMethodField()
     my_reaction = serializers.SerializerMethodField()
+    # All four rating fields are conditionally required depending on
+    # place.place_type (see validate()), so none of them are required at
+    # the field level — Place.TYPE_BALADE only fills rating_overall, every
+    # other type only fills atmosphere/drinks/price.
+    rating_atmosphere = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=5)
     rating_drinks = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=5)
+    rating_price = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=5)
+    rating_overall = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=5)
 
     class Meta:
         model = Review
@@ -210,6 +248,7 @@ class ReviewSerializer(ReactionFieldsMixin, serializers.ModelSerializer):
             "rating_atmosphere",
             "rating_drinks",
             "rating_price",
+            "rating_overall",
             "amount_spent",
             "text",
             "photos",
@@ -224,15 +263,35 @@ class ReviewSerializer(ReactionFieldsMixin, serializers.ModelSerializer):
     def validate(self, attrs):
         place = self.instance.place if self.instance else self.context.get("place")
         if place is not None:
-            requires_drinks = place.place_type in Place.TYPES_WITH_DRINKS
-            existing_drinks = self.instance.rating_drinks if self.instance else None
-            final_drinks = attrs.get("rating_drinks", existing_drinks)
-            if requires_drinks and final_drinks is None:
-                raise serializers.ValidationError(
-                    {"rating_drinks": "La note boissons est requise pour ce type d'établissement."}
-                )
-            if not requires_drinks:
+            def final(field):
+                existing = getattr(self.instance, field) if self.instance else None
+                return attrs.get(field, existing)
+
+            if place.place_type not in Place.TYPES_WITH_CRITERIA:
+                if final("rating_overall") is None:
+                    raise serializers.ValidationError(
+                        {"rating_overall": "La note globale est requise pour ce type d'établissement."}
+                    )
+                attrs["rating_atmosphere"] = None
                 attrs["rating_drinks"] = None
+                attrs["rating_price"] = None
+            else:
+                if final("rating_atmosphere") is None:
+                    raise serializers.ValidationError(
+                        {"rating_atmosphere": "La note ambiance est requise pour ce type d'établissement."}
+                    )
+                if final("rating_price") is None:
+                    raise serializers.ValidationError(
+                        {"rating_price": "La note rapport qualité-prix est requise pour ce type d'établissement."}
+                    )
+                requires_drinks = place.place_type in Place.TYPES_WITH_DRINKS
+                if requires_drinks and final("rating_drinks") is None:
+                    raise serializers.ValidationError(
+                        {"rating_drinks": "La note boissons est requise pour ce type d'établissement."}
+                    )
+                if not requires_drinks:
+                    attrs["rating_drinks"] = None
+                attrs["rating_overall"] = None
         return attrs
 
     def get_comments(self, obj):
@@ -242,9 +301,11 @@ class ReviewSerializer(ReactionFieldsMixin, serializers.ModelSerializer):
         return CommentSerializer(top_level, many=True, context=context).data
 
 
-class PlaceDetailSerializer(serializers.ModelSerializer):
+class PlaceDetailSerializer(PlaceTopFieldsMixin, serializers.ModelSerializer):
     reviews = ReviewSerializer(many=True, read_only=True)
     created_by = UserSerializer(read_only=True)
+    top_count = serializers.SerializerMethodField()
+    my_top_next_available_at = serializers.SerializerMethodField()
 
     class Meta:
         model = Place
@@ -253,6 +314,7 @@ class PlaceDetailSerializer(serializers.ModelSerializer):
             "city",
             "name",
             "place_type",
+            "event_date",
             "photo",
             "latitude",
             "longitude",
@@ -261,6 +323,8 @@ class PlaceDetailSerializer(serializers.ModelSerializer):
             "avg_price",
             "avg_overall",
             "avg_spent",
+            "top_count",
+            "my_top_next_available_at",
             "created_at",
             "created_by",
             "reviews",
