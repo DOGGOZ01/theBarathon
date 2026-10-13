@@ -3,6 +3,8 @@ Django settings for the Bar Rating App backend.
 """
 
 import os
+import sys
+import tempfile
 from datetime import timedelta
 from pathlib import Path
 
@@ -41,6 +43,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "core.middleware.MaxBodySizeMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -110,7 +113,45 @@ REST_FRAMEWORK = {
         "rest_framework.parsers.MultiPartParser",
         "rest_framework.parsers.FormParser",
     ),
+    "DEFAULT_THROTTLE_CLASSES": (
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+        "rest_framework.throttling.ScopedRateThrottle",
+    ),
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": os.environ.get("THROTTLE_ANON", "60/min"),
+        "user": os.environ.get("THROTTLE_USER", "300/min"),
+        # Brute-force protection for passwords and the invite code.
+        "login": os.environ.get("THROTTLE_LOGIN", "10/min"),
+        "register": os.environ.get("THROTTLE_REGISTER", "10/hour"),
+        "refresh": os.environ.get("THROTTLE_REFRESH", "30/min"),
+    },
+    # Number of reverse proxies in front of gunicorn (nginx = 1). Throttling
+    # keys anonymous clients by IP; without this every request looks like it
+    # comes from the proxy (127.0.0.1) and all visitors share one bucket.
+    # Only set it when gunicorn is NOT reachable directly, otherwise clients
+    # can spoof X-Forwarded-For.
+    "NUM_PROXIES": int(os.environ["DRF_NUM_PROXIES"]) if os.environ.get("DRF_NUM_PROXIES") else None,
 }
+
+# Throttle counters live in the cache. A file cache is shared by all gunicorn
+# workers on the host (LocMemCache would give each worker its own counters).
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.filebased.FileBasedCache",
+        "LOCATION": os.environ.get("DJANGO_CACHE_DIR", os.path.join(tempfile.gettempdir(), "thebarathon-cache")),
+    }
+}
+if "test" in sys.argv:
+    # Fresh, per-run counters so repeated test runs don't trip the throttles.
+    CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+
+# Hard cap on request bodies (uploads included), enforced by
+# core.middleware.MaxBodySizeMiddleware. Also set nginx client_max_body_size.
+MAX_REQUEST_BODY_SIZE = int(os.environ.get("MAX_REQUEST_BODY_MB", "15")) * 1024 * 1024
+# Comment reply chains deeper than this are rejected (the thread serializer
+# is recursive, so unbounded depth could crash the review page).
+MAX_COMMENT_DEPTH = 20
 
 # --- SimpleJWT ---
 SIMPLE_JWT = {
@@ -125,6 +166,14 @@ AUTH_COOKIE_ACCESS = "access_token"
 AUTH_COOKIE_REFRESH = "refresh_token"
 AUTH_COOKIE_SECURE = os.environ.get("AUTH_COOKIE_SECURE", "False") == "True"
 AUTH_COOKIE_SAMESITE = os.environ.get("AUTH_COOKIE_SAMESITE", "Lax")
+# Django's own cookies (used by /admin/) follow the same rule.
+SESSION_COOKIE_SECURE = AUTH_COOKIE_SECURE
+CSRF_COOKIE_SECURE = AUTH_COOKIE_SECURE
+
+# The built-in Django admin isn't used by the app (everything goes through
+# the API and the app's own /admin page), so it's only mounted in DEBUG unless
+# explicitly enabled.
+DJANGO_ADMIN_ENABLED = os.environ.get("DJANGO_ADMIN_ENABLED", str(DEBUG)) == "True"
 
 # --- CORS ---
 CORS_ALLOWED_ORIGINS = [

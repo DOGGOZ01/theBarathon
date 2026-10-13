@@ -25,8 +25,9 @@ const AuthContext = createContext<AuthState | null>(null);
 // Only ever navigate to an in-app relative path after login/register — a
 // `next`/redirect query param straight from the URL is attacker-controlled,
 // so an absolute or protocol-relative URL here would be an open redirect.
+// Browsers treat "\" like "/", so "/\evil.com" is protocol-relative too.
 function safeRedirect(path: string | null | undefined): string {
-  if (!path || !path.startsWith("/") || path.startsWith("//")) return "/";
+  if (!path || !path.startsWith("/") || path.startsWith("//") || path.startsWith("/\\")) return "/";
   return path;
 }
 

@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
+from django.utils.crypto import constant_time_compare
 from rest_framework import serializers
 
 from . import reactions, top_votes
@@ -39,7 +40,7 @@ class RegisterSerializer(serializers.Serializer):
 
     def validate_invite_code(self, value):
         invite = InviteConfig.get_solo()
-        if value != invite.code:
+        if not constant_time_compare(value, invite.code):
             raise serializers.ValidationError("Code d'invitation invalide.")
         return value
 
@@ -238,6 +239,9 @@ class ReviewSerializer(ReactionFieldsMixin, serializers.ModelSerializer):
     rating_drinks = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=5)
     rating_price = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=5)
     rating_overall = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=5)
+    amount_spent = serializers.DecimalField(
+        max_digits=8, decimal_places=2, required=False, allow_null=True, min_value=0
+    )
 
     class Meta:
         model = Review

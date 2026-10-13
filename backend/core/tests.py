@@ -725,3 +725,80 @@ class PlaceTopVoteAndLeaderboardTests(TestCase):
         self.assertEqual(res.status_code, 200, res.data)
         self.assertEqual(len(res.data["results"]), 5)
         self.assertTrue(res.data["has_more"])
+
+
+class SecurityHardeningTests(TestCase):
+    def setUp(self):
+        from django.core.cache import cache
+
+        cache.clear()
+        self.client = APIClient()
+        self.user = User.objects.create_user(username="alice", password="pw-long-enough-123")
+
+    def test_login_is_throttled(self):
+        for _ in range(10):
+            res = self.client.post("/api/auth/login/", {"username": "alice", "password": "wrong"}, format="json")
+            self.assertEqual(res.status_code, 400)
+        res = self.client.post("/api/auth/login/", {"username": "alice", "password": "wrong"}, format="json")
+        self.assertEqual(res.status_code, 429)
+
+    def test_register_is_throttled(self):
+        for i in range(10):
+            res = self.client.post(
+                "/api/auth/register/",
+                {"username": f"u{i}", "password": "pw-long-enough-123", "invite_code": "wrong"},
+                format="json",
+            )
+            self.assertEqual(res.status_code, 400)
+        res = self.client.post(
+            "/api/auth/register/",
+            {"username": "u99", "password": "pw-long-enough-123", "invite_code": "wrong"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 429)
+
+    def test_cookie_of_deleted_user_does_not_block_login(self):
+        self.client.post("/api/auth/login/", {"username": "alice", "password": "pw-long-enough-123"}, format="json")
+        self.user.delete()
+        User.objects.create_user(username="bob", password="pw-long-enough-123")
+        res = self.client.post("/api/auth/login/", {"username": "bob", "password": "pw-long-enough-123"}, format="json")
+        self.assertEqual(res.status_code, 200)
+
+    def test_oversized_request_is_rejected(self):
+        from django.test import override_settings
+
+        with override_settings(MAX_REQUEST_BODY_SIZE=10):
+            res = self.client.post("/api/auth/login/", {"username": "alice", "password": "x" * 50}, format="json")
+        self.assertEqual(res.status_code, 413)
+
+    def test_comment_depth_is_limited(self):
+        from django.test import override_settings
+
+        city = City.objects.create(name="C", country="F", latitude=0, longitude=0)
+        place = Place.objects.create(city=city, name="P", latitude=0, longitude=0, created_by=self.user)
+        review = Review.objects.create(
+            place=place, user=self.user, rating_atmosphere=3, rating_drinks=3, rating_price=3
+        )
+        parent = Comment.objects.create(review=review, user=self.user, text="root")
+        for _ in range(3):
+            parent = Comment.objects.create(review=review, user=self.user, text="x", parent=parent)
+        self.client.force_authenticate(self.user)
+        with override_settings(MAX_COMMENT_DEPTH=4):
+            res = self.client.post(f"/api/comments/{parent.id}/replies/", {"text": "too deep"}, format="json")
+        self.assertEqual(res.status_code, 400)
+
+    def test_mark_read_rejects_non_list_ids(self):
+        self.client.force_authenticate(self.user)
+        res = self.client.post("/api/notifications/mark-read/", {"ids": "abc"}, format="json")
+        self.assertEqual(res.status_code, 400)
+
+    def test_negative_amount_spent_is_rejected(self):
+        city = City.objects.create(name="C", country="F", latitude=0, longitude=0)
+        place = Place.objects.create(city=city, name="P", latitude=0, longitude=0, created_by=self.user)
+        self.client.force_authenticate(self.user)
+        res = self.client.post(
+            f"/api/places/{place.id}/reviews/",
+            {"rating_atmosphere": 3, "rating_drinks": 3, "rating_price": 3, "amount_spent": "-50"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 400)

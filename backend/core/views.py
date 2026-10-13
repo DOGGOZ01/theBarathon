@@ -71,6 +71,7 @@ def _set_auth_cookies(response, user):
 
 class RegisterView(generics.CreateAPIView):
     permission_classes = [AllowAny]
+    throttle_scope = "register"
     serializer_class = RegisterSerializer
 
     def create(self, request, *args, **kwargs):
@@ -84,6 +85,7 @@ class RegisterView(generics.CreateAPIView):
 
 class LoginView(APIView):
     permission_classes = [AllowAny]
+    throttle_scope = "login"
 
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
@@ -92,6 +94,10 @@ class LoginView(APIView):
         password = serializer.validated_data["password"]
 
         user = User.objects.filter(username__iexact=username).first()
+        if user is None:
+            # Hash anyway so an unknown username takes as long as a wrong
+            # password (no username enumeration by response time).
+            User().set_password(password)
         if user is None or not user.check_password(password) or not user.is_active:
             raise ValidationError({"detail": "Identifiants invalides."})
 
@@ -102,6 +108,7 @@ class LoginView(APIView):
 
 class RefreshView(APIView):
     permission_classes = [AllowAny]
+    throttle_scope = "refresh"
 
     def post(self, request):
         raw_refresh = request.COOKIES.get(settings.AUTH_COOKIE_REFRESH)
@@ -345,6 +352,12 @@ class CommentRepliesView(generics.CreateAPIView):
             Comment.objects.select_related("review", "review__place", "review__place__created_by"),
             pk=self.kwargs["comment_id"],
         )
+        depth, node = 1, parent
+        while node.parent_id is not None:
+            depth += 1
+            if depth >= settings.MAX_COMMENT_DEPTH:
+                raise ValidationError({"detail": "Ce fil de discussion est trop long."})
+            node = node.parent
         comment = serializer.save(review=parent.review, parent=parent, user=self.request.user)
         reactions.notify_reply(comment)
         reactions.notify_place_activity(self.request.user, parent.review.place, parent.review, comment)
@@ -425,6 +438,8 @@ class NotificationMarkReadView(APIView):
         ids = request.data.get("ids")
         qs = Notification.objects.filter(recipient=request.user, is_read=False)
         if ids:
+            if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
+                raise ValidationError({"ids": "Liste d'identifiants attendue."})
             qs = qs.filter(pk__in=ids)
         qs.update(is_read=True)
         return Response(status=status.HTTP_204_NO_CONTENT)
