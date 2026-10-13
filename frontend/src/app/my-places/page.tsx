@@ -26,7 +26,7 @@ export default function MyPlacesPage() {
   return (
     <main className="mx-auto max-w-md px-4 pt-8">
       <header className="mb-6">
-        <h1 className="font-display text-2xl">Mes endroits</h1>
+        <h1 className="font-display text-2xl">Mes établissements</h1>
         <p className="text-sm text-ink-soft">Établissements que vous avez ajoutés</p>
       </header>
 

@@ -29,9 +29,7 @@ export function CityFormSheet({ city, pin, onSaved, onCancel }: CityFormSheetPro
       fd.append("name", name);
       fd.append("country", country);
       if (pin) {
-        // Backend DecimalField allows at most 6 decimal places; raw
-        // Leaflet click coordinates have far more (float precision) and
-        // would otherwise fail serializer validation on every save.
+        // The API accepts at most 6 decimal places.
         fd.append("latitude", pin[0].toFixed(6));
         fd.append("longitude", pin[1].toFixed(6));
       }
@@ -77,7 +75,7 @@ export function CityFormSheet({ city, pin, onSaved, onCancel }: CityFormSheetPro
             />
           </label>
           <label className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium">Photo {city && "(facultatif — laissez vide pour ne pas la changer)"}</span>
+            <span className="text-sm font-medium">Photo {city && "(facultatif, laissez vide pour garder la photo actuelle)"}</span>
             <input
               type="file"
               accept="image/*"

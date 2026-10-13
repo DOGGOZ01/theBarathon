@@ -115,9 +115,7 @@ function PlaceDetailPageInner() {
   const canEditPlace = user.is_admin || place.created_by?.id === user.id;
   const topCooldownRemaining = place.my_top_next_available_at ? formatTopCooldown(place.my_top_next_available_at) : null;
 
-  // Arriving here via a deep link (Nouveautés/Notifications) should return
-  // there on "back", not always to the city map — those are two different
-  // "where did I come from" contexts and the arrow shouldn't collapse them.
+  // Coming from the feed or notifications, "back" returns there, not to the map.
   const cameFrom = searchParams.get("from");
   const backHref =
     cameFrom === "activity" ? "/activity" : cameFrom === "notifications" ? "/notifications" : `/city/${place.city}`;

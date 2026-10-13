@@ -36,10 +36,7 @@ export function ReviewForm({ placeId, placeType, existingReview, onSaved, onCanc
   const [newFiles, setNewFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // Tracks the review id once create/update has succeeded, so that if a
-  // later step (photo upload) fails and the user retries, we PATCH the
-  // already-created review instead of POSTing a duplicate (which would
-  // 409 since a review already exists for this user+place).
+  // Once the review exists, a retry (e.g. after a failed photo upload) PATCHes it.
   const [savedReviewId, setSavedReviewId] = useState<number | null>(existingReview?.id ?? null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -101,10 +98,7 @@ export function ReviewForm({ placeId, placeType, existingReview, onSaved, onCanc
         : await api.post<Review>(`/places/${placeId}/reviews/`, body);
       setSavedReviewId(review.id);
 
-      // Upload sequentially and drop each file from state as soon as it
-      // succeeds, so a failure partway through only leaves the
-      // not-yet-uploaded files queued for the next retry (instead of
-      // re-sending photos that already made it to the server).
+      // Upload one by one and drop each uploaded file, so a retry only sends the rest.
       let remaining = newFiles;
       while (remaining.length > 0) {
         const [file, ...rest] = remaining;

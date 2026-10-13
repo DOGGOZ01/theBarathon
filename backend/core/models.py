@@ -123,17 +123,15 @@ class Place(models.Model):
         (TYPE_BALADE, "Balade"),
         (TYPE_EVENEMENT, "Événement"),
     ]
-    # Bar and restaurant collect the same 3 criteria (atmosphere/drinks/price);
-    # "endroit" is a lighter-weight spot with no drinks rating at all.
+    # Bar and restaurant rate atmosphere, drinks and price; endroit has no drinks rating.
     TYPES_WITH_DRINKS = (TYPE_BAR, TYPE_RESTAURANT)
-    # "balade" and "evenement" have no per-criterion breakdown at all —
-    # reviews only carry a single direct overall rating (Review.rating_overall).
+    # Balade and evenement only get a single overall rating.
     TYPES_WITH_CRITERIA = (TYPE_BAR, TYPE_RESTAURANT, TYPE_ENDROIT)
 
     city = models.ForeignKey(City, on_delete=models.CASCADE, related_name="places")
     name = models.CharField(max_length=50)
     place_type = models.CharField(max_length=20, choices=TYPE_CHOICES, default=TYPE_BAR)
-    # Only used (and required) for TYPE_EVENEMENT: the event's date/time.
+    # Only used (and required) for TYPE_EVENEMENT.
     event_date = models.DateTimeField(null=True, blank=True)
     photo = models.ImageField(upload_to="places/", blank=True, null=True)
     latitude = models.DecimalField(max_digits=9, decimal_places=6)
@@ -159,10 +157,7 @@ class Place(models.Model):
         return self.name
 
     def save(self, *args, **kwargs):
-        # place_type drives which criteria count toward avg_overall
-        # (recalculate_ratings), so a type change must trigger a recompute —
-        # otherwise the averages shown keep reflecting the old type until
-        # the next unrelated review event happens to save() this place again.
+        # avg_overall depends on place_type, so recompute when it changes.
         type_changed = self.pk is not None and self._loaded_place_type != self.place_type
         super().save(*args, **kwargs)
         self._loaded_place_type = self.place_type
@@ -200,11 +195,7 @@ class Place(models.Model):
 
 
 class PlaceTopVote(models.Model):
-    """One row per 'Top' click by a user on a place they've reviewed.
-    Multiple rows per (user, place) are expected over time — the cooldown
-    between two votes from the same user on the same place (see
-    core.top_votes.COOLDOWN) is enforced in core.top_votes, not by a DB
-    constraint."""
+    """One row per Top vote. The cooldown between votes is enforced in core.top_votes."""
 
     place = models.ForeignKey(Place, on_delete=models.CASCADE, related_name="top_votes")
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="place_top_votes")
@@ -220,14 +211,13 @@ class PlaceTopVote(models.Model):
 class Review(models.Model):
     place = models.ForeignKey(Place, on_delete=models.CASCADE, related_name="reviews")
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="reviews")
-    # Null for reviews of a Place.TYPE_BALADE place (no criteria there, see rating_overall).
+    # Null for types without criteria (balade, evenement).
     rating_atmosphere = models.PositiveSmallIntegerField(validators=RATING_VALIDATORS, null=True, blank=True)
-    # Null unless the place is a Place.TYPES_WITH_DRINKS type.
+    # Null unless the place type has a drinks rating.
     rating_drinks = models.PositiveSmallIntegerField(validators=RATING_VALIDATORS, null=True, blank=True)
-    # Null for reviews of a Place.TYPE_BALADE place (no criteria there, see rating_overall).
+    # Null for types without criteria (balade, evenement).
     rating_price = models.PositiveSmallIntegerField(validators=RATING_VALIDATORS, null=True, blank=True)
-    # Set only for reviews of a Place.TYPE_BALADE place: a single direct
-    # rating with no atmosphere/drinks/price breakdown.
+    # Only for types without criteria (balade, evenement).
     rating_overall = models.PositiveSmallIntegerField(validators=RATING_VALIDATORS, null=True, blank=True)
     amount_spent = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     text = models.TextField(max_length=2000, blank=True, default="")
@@ -253,8 +243,7 @@ class ReviewPhoto(models.Model):
 
 
 class Comment(models.Model):
-    """A reply, threaded to any depth: either directly under a Review
-    (parent is null) or under another Comment (parent set)."""
+    """A reply under a Review (parent is null) or under another Comment."""
 
     review = models.ForeignKey(Review, on_delete=models.CASCADE, related_name="comments")
     parent = models.ForeignKey(
@@ -283,9 +272,7 @@ class CommentPhoto(models.Model):
 
 
 class Reaction(models.Model):
-    """A single emoji reaction by one user on a Review or a Comment.
-    One reaction per (user, target); switching the emoji updates it in
-    place rather than stacking a second row."""
+    """An emoji reaction on a Review or Comment, one per user and target."""
 
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
     object_id = models.PositiveIntegerField()
@@ -304,10 +291,7 @@ class Reaction(models.Model):
 class Notification(models.Model):
     VERB_REPLY = "reply"
     VERB_REACTION = "reaction"
-    # Fires on the owner of a Place when someone else adds a review or a
-    # comment anywhere in that place's discussion — distinct from VERB_REPLY
-    # (owner of the specific review/comment) since the place owner may be a
-    # different person entirely.
+    # Sent to a place's creator when someone reviews or comments on it.
     VERB_PLACE_ACTIVITY = "place_activity"
     VERB_CHOICES = [
         (VERB_REPLY, "reply"),
@@ -318,12 +302,9 @@ class Notification(models.Model):
     recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="notifications")
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+")
     verb = models.CharField(max_length=20, choices=VERB_CHOICES)
-    # Always set: the review whose thread this event happened in, so the
-    # notification can always navigate to a place even if `comment` (below)
-    # is later deleted.
+    # Always set, so the notification still links to a place if the comment is deleted.
     review = models.ForeignKey(Review, on_delete=models.CASCADE, related_name="+")
-    # Set when the event concerns a Comment: the new reply itself (verb=reply)
-    # or the comment that got reacted to (verb=reaction, if not the review).
+    # The new reply (verb=reply) or the comment that got a reaction.
     comment = models.ForeignKey(Comment, on_delete=models.CASCADE, null=True, blank=True, related_name="+")
     reaction_emoji = models.CharField(max_length=10, blank=True, default="")
     is_read = models.BooleanField(default=False)

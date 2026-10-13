@@ -176,9 +176,7 @@ class CommentPhotoSerializer(serializers.ModelSerializer):
 
 
 def build_comments_by_parent(review):
-    """Fetch every comment on a review in one flat query and group by
-    parent_id, so serializing the whole (arbitrarily deep) reply tree costs
-    one query instead of one per node."""
+    """Load all comments of a review in one query, grouped by parent_id."""
     all_comments = list(
         review.comments.select_related("user").prefetch_related("photos", "reactions").order_by("created_at")
     )
@@ -213,10 +211,7 @@ class CommentSerializer(ReactionFieldsMixin, serializers.ModelSerializer):
         read_only_fields = ("id", "review", "parent", "user", "created_at", "updated_at")
 
     def get_replies(self, obj):
-        # When available (see build_comments_by_parent), this avoids one
-        # query per node of the reply tree — the whole thread for a review
-        # is fetched flat, once, up front. Fall back to a direct query for
-        # standalone use (e.g. CommentDetailView), where that isn't set up.
+        # Use the preloaded tree when there is one (see build_comments_by_parent).
         by_parent = self.context.get("comments_by_parent")
         if by_parent is not None:
             children = by_parent.get(obj.id, [])
@@ -231,10 +226,7 @@ class ReviewSerializer(ReactionFieldsMixin, serializers.ModelSerializer):
     comments = serializers.SerializerMethodField()
     reactions_summary = serializers.SerializerMethodField()
     my_reaction = serializers.SerializerMethodField()
-    # All four rating fields are conditionally required depending on
-    # place.place_type (see validate()), so none of them are required at
-    # the field level — Place.TYPE_BALADE only fills rating_overall, every
-    # other type only fills atmosphere/drinks/price.
+    # Which ratings are required depends on place_type, see validate().
     rating_atmosphere = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=5)
     rating_drinks = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=5)
     rating_price = serializers.IntegerField(required=False, allow_null=True, min_value=1, max_value=5)

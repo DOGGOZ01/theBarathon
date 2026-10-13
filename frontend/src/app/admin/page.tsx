@@ -277,7 +277,7 @@ export default function AdminPage() {
 
       {placePicking && selectedCity && (
         <MapPickerOverlay
-          title={`Établissement à : ${selectedCity.name}`}
+          title="Où se trouve l'établissement ?"
           center={[Number(selectedCity.latitude), Number(selectedCity.longitude)]}
           zoom={13}
           contextPlaces={places}

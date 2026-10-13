@@ -11,9 +11,8 @@ class IsAdminOrReadOnly(BasePermission):
 
 
 class IsAdminOrCreateByAnyAuthenticated(BasePermission):
-    """Read for any authenticated user, create for any authenticated user.
-    PATCH (rename/re-photo only, enforced in the view) is allowed for the
-    place's own creator or an admin; PUT/DELETE stay admin-only."""
+    """Any authenticated user can read and create. PATCH: creator or admin
+    (the view limits which fields). PUT/DELETE: admin only."""
 
     def has_permission(self, request, view):
         if not (request.user and request.user.is_authenticated):

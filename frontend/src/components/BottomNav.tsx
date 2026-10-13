@@ -63,8 +63,7 @@ export function BottomNav() {
       .get<{ count: number }>("/notifications/unread-count/")
       .then((res) => setUnreadCount(res.count))
       .catch(() => {});
-    // Not real-time: refetched whenever the user navigates somewhere new
-    // (e.g. away from /notifications, which just marked things read).
+    // Refetched on navigation, not real-time.
   }, [user, pathname]);
 
   async function onAvatarSelected(file: File | null) {
@@ -150,7 +149,7 @@ export function BottomNav() {
               <button
                 type="button"
                 onClick={() => avatarInputRef.current?.click()}
-                aria-label="Changer l'avatar"
+                aria-label="Changer la photo de profil"
                 className="relative"
               >
                 <Avatar user={user} size={56} />
@@ -175,7 +174,7 @@ export function BottomNav() {
               onClick={() => setSheetOpen(false)}
               className="mt-5 flex min-h-[44px] w-full items-center justify-center rounded-block border-2 border-ink bg-paper font-medium shadow-hard-sm active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
             >
-              Mes endroits
+              Mes établissements
             </Link>
             <Link
               href="/my-reviews"

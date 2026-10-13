@@ -20,9 +20,8 @@ def recalc_on_review_delete(sender, instance, **kwargs):
 
 @receiver(post_delete, sender=ReviewPhoto)
 def delete_photo_file(sender, instance, **kwargs):
-    # Having this receiver forces Django's collector to fetch+delete
-    # ReviewPhoto rows individually (no fast-delete) even when cascading
-    # from a Review/Place/City delete, so this always fires per photo.
+    # Remove the image file. Having this receiver also makes cascades delete
+    # photos one by one, so it runs for every photo.
     if instance.image:
         instance.image.delete(save=False)
 

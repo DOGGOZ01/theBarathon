@@ -19,18 +19,14 @@ interface MapPickerOverlayProps {
   onCancel: () => void;
 }
 
-// Tighter than the city-wide default zoom — when we do center on the user's
-// real position, the pin should start near street level, not zoomed out to
-// the whole city.
+// Street-level zoom when centering on the user's position.
 const GEOLOCATED_ZOOM = 17;
 const GEOLOCATION_TIMEOUT_MS = 6000;
 // Gap between the bottom confirm panel and the GeolocateControl sitting above it.
 const GEOLOCATE_CONTROL_GAP = 16;
 
 export function MapPickerOverlay({ title, center, zoom = 13, contextPlaces = [], onConfirm, onCancel }: MapPickerOverlayProps) {
-  // Map only mounts once we know where to start it: either the user's
-  // position (if geolocation is available/granted) or the city's default
-  // center as a fallback. Resolved once on mount, not re-run per prop change.
+  // Start position (user location or city center), resolved once on mount.
   const [startCenter, setStartCenter] = useState<[number, number] | null>(null);
   const [startZoom, setStartZoom] = useState(zoom);
   const [liveCenter, setLiveCenter] = useState<[number, number]>(center);
@@ -38,8 +34,7 @@ export function MapPickerOverlay({ title, center, zoom = 13, contextPlaces = [],
   const bottomPanelRef = useRef<HTMLDivElement>(null);
   useHideBottomNav();
 
-  // The confirm panel's height varies with content/viewport width (the coordinates
-  // text can wrap on narrow screens), so measure it instead of hardcoding an offset.
+  // The panel height varies (coordinates can wrap), so it is measured.
   useEffect(() => {
     const el = bottomPanelRef.current;
     if (!el) return;
@@ -73,7 +68,6 @@ export function MapPickerOverlay({ title, center, zoom = 13, contextPlaces = [],
         setStartCenter(userCenter);
       },
       () => {
-        // Denied, unavailable, or errored — fall back to the city center.
         if (settled) return;
         settled = true;
         window.clearTimeout(fallback);
@@ -119,7 +113,7 @@ export function MapPickerOverlay({ title, center, zoom = 13, contextPlaces = [],
         )}
       </div>
 
-      {/* Fixed pin: stays centered on screen while the map pans underneath it — the pin's tip marks the exact point that will be dropped. */}
+      {/* Fixed center pin; its tip marks the point that will be saved. */}
       <div className="pointer-events-none absolute left-1/2 top-1/2 z-[400] -translate-x-1/2 -translate-y-full">
         <svg width="40" height="40" viewBox="0 0 34 34" xmlns="http://www.w3.org/2000/svg">
           <path

@@ -13,16 +13,10 @@ interface CommentListProps {
   onChanged: () => void;
 }
 
-/** Renders one level of a comment thread (a review's top-level replies, or
- * one comment's nested replies). More than COLLAPSE_THRESHOLD items at this
- * level and NONE of them render — just a single "show N replies" button —
- * rather than showing a partial preview.
- *
- * This is what makes deep threads stay collapsed level-by-level instead of
- * exploding open all at once: each comment's own replies go through this
- * same component independently, so a comment only reveals its children once
- * that specific level has been expanded, regardless of how many levels are
- * nested below it. */
+/**
+ * One level of a comment thread. Above COLLAPSE_THRESHOLD replies the level is
+ * collapsed behind a "show N replies" button, so deep threads open level by level.
+ */
 export function CommentList({ comments, currentUser, depth, onChanged }: CommentListProps) {
   const [expanded, setExpanded] = useState(comments.length <= COLLAPSE_THRESHOLD);
 

@@ -1,7 +1,7 @@
 {
   "name": "theBarathon",
   "short_name": "theBarathon",
-  "description": "Notes de bars et d'établissements — sur invitation uniquement",
+  "description": "Les bars, restaurants et sorties notés par la bande",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

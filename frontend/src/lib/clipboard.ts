@@ -1,10 +1,6 @@
 /**
- * navigator.clipboard is only available in a "secure context" (https:// or
- * http://localhost) — testing over the LAN from a phone means the page is
- * served over plain http:// from a real IP, where the Clipboard API is
- * undefined and the copy button would otherwise silently do nothing. Falls
- * back to the classic hidden-textarea + execCommand trick, which still
- * works everywhere.
+ * navigator.clipboard only exists on https or localhost, so fall back to
+ * a hidden textarea + execCommand (e.g. when testing over the LAN).
  */
 export async function copyToClipboard(text: string): Promise<boolean> {
   if (navigator.clipboard && window.isSecureContext) {
@@ -12,7 +8,6 @@ export async function copyToClipboard(text: string): Promise<boolean> {
       await navigator.clipboard.writeText(text);
       return true;
     } catch {
-      // fall through to the legacy path below
     }
   }
 

@@ -28,8 +28,6 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // /tiles is the self-hosted PMTiles map archive: plain OpenStreetMap data,
-  // not sensitive, and it must be reachable via HTTP range requests without
-  // going through the auth-redirect logic below.
+  // /tiles is public map data fetched with range requests, so no auth redirect.
   matcher: ["/((?!api|_next/static|_next/image|favicon.ico|tiles).*)"],
 };

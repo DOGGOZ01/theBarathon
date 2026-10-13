@@ -12,10 +12,7 @@ type Tab = "users" | "places";
 
 const NEXT_PAGE_SIZE = 10;
 
-// First page size adapts to viewport height so the list roughly fills the
-// screen without an obvious empty gap below it or forcing an immediate
-// "load more" tap; clamped since a very short/tall screen shouldn't ask for
-// an unreasonable amount in one request.
+// First page size fits the screen height, within limits.
 function initialPageSize(): number {
   if (typeof window === "undefined") return 10;
   const estimatedRowHeight = 72;
@@ -115,7 +112,7 @@ export default function LeaderboardPage() {
           onClick={() => switchTab("places")}
           className={`flex-1 rounded-block py-2 text-sm font-medium ${tab === "places" ? "bg-yellow" : ""}`}
         >
-          Lieux
+          Établissements
         </button>
       </div>
 
@@ -123,7 +120,7 @@ export default function LeaderboardPage() {
         type="search"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        placeholder={tab === "users" ? "Rechercher un utilisateur…" : "Rechercher un lieu…"}
+        placeholder={tab === "users" ? "Rechercher un utilisateur…" : "Rechercher un établissement…"}
         className="mt-3 min-h-[44px] w-full rounded-block border-2 border-ink bg-paper px-3 py-2 text-sm"
       />
 
@@ -144,8 +141,9 @@ export default function LeaderboardPage() {
               <Avatar user={row.user} size={40} />
               <div className="min-w-0 flex-1">
                 <p className="truncate font-medium">{row.user.username}</p>
-                <p className="truncate text-xs text-ink-soft">
-                  {row.reviews_count} avis · {row.places_count} lieux · {row.reactions_count} réactions
+                <p className="text-xs text-ink-soft">
+                  {row.reviews_count} avis · {row.places_count} établissement{row.places_count > 1 ? "s" : ""} ·{" "}
+                  {row.reactions_count} réaction{row.reactions_count > 1 ? "s" : ""}
                 </p>
               </div>
               <div className="shrink-0 rounded-block border-2 border-ink bg-yellow px-2 py-1 text-center">

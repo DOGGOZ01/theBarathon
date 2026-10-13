@@ -11,9 +11,7 @@ interface ChromeState {
 const ChromeContext = createContext<ChromeState | null>(null);
 
 export function ChromeProvider({ children }: { children: React.ReactNode }) {
-  // Reference-counted so two overlapping "hide" requests (unlikely in
-  // practice, but cheap to get right) don't reveal the nav the moment
-  // just one of them unmounts.
+  // Reference-counted so overlapping hide requests don't show the nav too early.
   const [hideCount, setHideCount] = useState(0);
 
   const pushHideBottomNav = useCallback(() => setHideCount((n) => n + 1), []);
@@ -32,9 +30,7 @@ export function useChrome() {
   return ctx;
 }
 
-/** Hides BottomNav for as long as the calling component stays mounted —
- * e.g. a full-screen map picker shouldn't compete with the bottom nav for
- * the same strip of screen. Restores it on unmount. */
+/** Hides BottomNav while the calling component is mounted. */
 export function useHideBottomNav() {
   const { pushHideBottomNav, popHideBottomNav } = useChrome();
 

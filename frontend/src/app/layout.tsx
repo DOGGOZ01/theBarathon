@@ -20,7 +20,7 @@ const unbounded = Unbounded({
 
 export const metadata: Metadata = {
   title: "theBarathon",
-  description: "Notes de bars et d'établissements — sur invitation uniquement",
+  description: "Les bars, restaurants et sorties notés par la bande",
   manifest: "/manifest.json",
   icons: {
     icon: "/icons/icon-192.png",

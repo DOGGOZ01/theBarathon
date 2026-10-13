@@ -27,7 +27,7 @@ export default function ActivityPage() {
     <main className="mx-auto max-w-md px-4 pt-8">
       <header className="mb-6">
         <h1 className="font-display text-2xl">Nouveautés</h1>
-        <p className="text-sm text-ink-soft">Derniers bars et avis de la bande</p>
+        <p className="text-sm text-ink-soft">Derniers ajouts et avis de la bande</p>
       </header>
 
       {error && <p className="rounded-block border-2 border-bad bg-bad/10 px-3 py-2 text-sm text-bad">{error}</p>}

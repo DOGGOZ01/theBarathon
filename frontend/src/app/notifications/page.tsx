@@ -37,7 +37,7 @@ export default function NotificationsPage() {
   return (
     <main className="mx-auto max-w-md px-4 pt-8">
       <header className="mb-6">
-        <h1 className="font-display text-2xl">Notifications</h1>
+        <h1 className="font-display text-2xl">Alertes</h1>
       </header>
 
       {error && <p className="rounded-block border-2 border-bad bg-bad/10 px-3 py-2 text-sm text-bad">{error}</p>}
@@ -65,7 +65,7 @@ export default function NotificationsPage() {
                       a réagi {REACTION_GLYPHS[n.reaction_emoji as keyof typeof REACTION_GLYPHS]} à votre message
                     </>
                   ) : n.verb === "place_activity" ? (
-                    n.comment ? "a commenté sur votre établissement" : "a laissé un avis sur votre établissement"
+                    n.comment ? "a laissé un commentaire sur votre établissement" : "a laissé un avis sur votre établissement"
                   ) : (
                     "a répondu à votre message"
                   )}

@@ -89,7 +89,7 @@ export function ReviewCard({
         {review.rating_drinks !== null && (
           <RatingBadge label={DRINKS_CRITERION_LABEL[placeType]} value={review.rating_drinks} />
         )}
-        {review.rating_price !== null && <RatingBadge label="Prix" value={review.rating_price} />}
+        {review.rating_price !== null && <RatingBadge label="Qualité-prix" value={review.rating_price} />}
         {review.rating_overall !== null && <RatingBadge label="Note globale" value={review.rating_overall} />}
         {review.amount_spent && (
           <span className="inline-flex items-center gap-1 rounded-pill border-2 border-ink bg-paper px-2 py-0.5">

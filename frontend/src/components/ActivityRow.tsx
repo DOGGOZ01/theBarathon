@@ -5,8 +5,7 @@ import type { ActivityItem } from "@/lib/types";
 
 interface ActivityRowProps {
   item: ActivityItem;
-  /** Hide the actor's name/avatar — useful when every row already belongs to
-   * the same person (e.g. on that person's own profile page). */
+  /** Hide the actor, e.g. on that person's own profile. */
   hideActor?: boolean;
 }
 

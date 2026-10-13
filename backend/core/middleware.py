@@ -3,9 +3,7 @@ from django.http import JsonResponse
 
 
 class MaxBodySizeMiddleware:
-    """Rejects requests whose declared body is larger than
-    MAX_REQUEST_BODY_SIZE before anything reads it (Django has no limit on
-    uploaded file size by default)."""
+    """Rejects bodies over MAX_REQUEST_BODY_SIZE (Django has no upload limit)."""
 
     def __init__(self, get_response):
         self.get_response = get_response

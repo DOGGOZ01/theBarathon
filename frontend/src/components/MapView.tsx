@@ -15,19 +15,14 @@ function ensurePmtilesProtocol() {
   if (protocolRegistered) return;
   const protocol = new Protocol();
   addProtocol("pmtiles", protocol.tile);
-  // Turbopack doesn't emit maplibre-gl's worker chunk (and its sibling
-  // maplibre-gl-shared.mjs) correctly, so the library falls back to a
-  // broken worker URL and tiles never load. Both files are copied into
-  // public/ verbatim from node_modules/maplibre-gl/dist — re-copy them if
-  // maplibre-gl is ever upgraded (see frontend/README.md).
+  // Turbopack breaks maplibre-gl's worker chunk, so the worker files are served
+  // from public/ (copied by scripts/copy-maplibre-worker.mjs).
   setWorkerUrl(`${window.location.origin}/maplibre-gl-worker.mjs`);
   protocolRegistered = true;
 }
 
 function buildStyle(): StyleSpecification {
-  // Tile fetches happen inside a worker, where a root-relative URL doesn't
-  // reliably resolve against the page's origin — pmtiles always wants an
-  // absolute URL here.
+  // Tiles load inside a worker, which needs an absolute URL.
   const tilesUrl = `${window.location.origin}/tiles/france.pmtiles`;
   return {
     version: 8,
@@ -84,7 +79,7 @@ interface MapViewProps {
   onPlaceClick?: (place: Place) => void;
   onCenterChange?: (lat: number, lng: number) => void;
   geolocate?: boolean;
-  /** Extra bottom margin (px) to push the bottom-left GeolocateControl above other fixed UI overlapping that corner. */
+  /** Extra bottom offset (px) for the geolocate button. */
   geolocateOffset?: number;
   focusPlaceId?: number | null;
 }
@@ -187,10 +182,7 @@ export function MapView({
     renderRef.current = renderMarkers;
 
     map.on("load", renderMarkers);
-    // "move" fires continuously during flyTo/easeTo zoom animations, not just
-    // once at the end — needed so clusters split apart live as the pins grow
-    // far enough apart, instead of staying frozen as one cluster marker
-    // until the animation finishes and only "moveend" fires.
+    // "move" fires during zoom animations too, so clusters split live.
     map.on("move", renderMarkers);
     map.on("moveend", renderMarkers);
 
@@ -225,10 +217,7 @@ export function MapView({
   }, [geolocate, geolocateOffset]);
 
   useEffect(() => {
-    // Only fly once per distinct focusPlaceId — without this guard, any
-    // unrelated refetch of `places` (e.g. after adding/editing a place
-    // elsewhere on the map) re-runs this effect and yanks the map back to
-    // the focused pin, undoing whatever the user has panned/zoomed to since.
+    // Fly once per focusPlaceId, so refetching places doesn't reset the user's view.
     if (!focusPlaceId || lastFocusedRef.current === focusPlaceId) return;
     const target = places.find((p) => p.id === focusPlaceId);
     if (!target || !target.latitude || !target.longitude) return;

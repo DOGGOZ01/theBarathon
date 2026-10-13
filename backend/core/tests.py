@@ -52,7 +52,6 @@ class ThreadedCommentsAndReactionsTests(TestCase):
         self.assertEqual(notif.actor, self.bob)
         self.assertEqual(notif.comment_id, comment_id)
 
-        # Alice replying to her own review shouldn't notify herself.
         client_alice = self.client_as(self.alice)
         client_alice.post(f"/api/reviews/{self.review.id}/comments/", {"text": "Merci !"})
         self.assertEqual(Notification.objects.filter(recipient=self.alice, verb="reply").count(), 1)
@@ -80,12 +79,10 @@ class ThreadedCommentsAndReactionsTests(TestCase):
         self.assertEqual(res.data["my_reaction"], "love")
         self.assertTrue(Notification.objects.filter(recipient=self.alice, verb="reaction").exists())
 
-        # Switching emoji updates in place (still one reaction row).
         client.post(f"/api/reviews/{self.review.id}/react/", {"emoji": "haha"})
         self.assertEqual(Reaction.objects.filter(user=self.bob).count(), 1)
         self.assertEqual(Reaction.objects.get(user=self.bob).emoji, "haha")
 
-        # Posting the same emoji again toggles it off.
         res = client.post(f"/api/reviews/{self.review.id}/react/", {"emoji": "haha"})
         self.assertEqual(res.data["reactions_summary"], [])
         self.assertEqual(res.data["my_reaction"], None)
@@ -100,7 +97,6 @@ class ThreadedCommentsAndReactionsTests(TestCase):
         self.client_as(self.bob).post(f"/api/reviews/{self.review.id}/comments/", {"text": "hey"})
         client = self.client_as(self.alice)
         res = client.get("/api/notifications/unread-count/")
-        # Alice owns both the review (-> "reply") and the place (-> "place_activity").
         self.assertEqual(res.data["count"], 2)
 
         client.post("/api/notifications/mark-read/")
@@ -213,7 +209,7 @@ class PlaceTypeAndSpendTests(TestCase):
         self.assertIsNone(res.data["rating_drinks"])
 
         place.refresh_from_db()
-        self.assertEqual(place.avg_overall, 3)  # (4 + 2) / 2, not divided by 3
+        self.assertEqual(place.avg_overall, 3)
         self.assertEqual(place.avg_spent, 15.5)
 
     def test_endroit_review_ignores_drinks_rating_if_sent_anyway(self):
@@ -288,7 +284,7 @@ class PlaceTypeAndSpendTests(TestCase):
             place=place, user=self.bob, rating_atmosphere=4, rating_drinks=4, rating_price=4, amount_spent=20
         )
         place.recalculate_ratings()
-        self.assertEqual(place.avg_spent, 20)  # only the review with a value counts
+        self.assertEqual(place.avg_spent, 20)
 
     def test_owner_can_edit_own_place_name_and_photo(self):
         place = make_place(self.alice)
@@ -362,8 +358,7 @@ class PlaceTypeAndSpendTests(TestCase):
         self.assertEqual(res.data[0]["created_by"]["username"], "alice")
 
 
-class BugfixRegressionTests(TestCase):
-    """Covers the fixes applied after the 2026-08-29 audit round."""
+class DataConsistencyTests(TestCase):
 
     def setUp(self):
         self.alice = User.objects.create_user(username="alice", password="pw")
@@ -388,7 +383,6 @@ class BugfixRegressionTests(TestCase):
         self.assertEqual(res.status_code, 200, res.data)
 
         place.refresh_from_db()
-        # Drinks no longer counts toward overall once the type no longer has it.
         self.assertEqual(float(place.avg_overall), round((4 + 4) / 2, 2))
 
     def test_removing_a_reaction_deletes_its_notification(self):
@@ -401,7 +395,6 @@ class BugfixRegressionTests(TestCase):
         client.post(f"/api/reviews/{review.id}/react/", {"emoji": "like"})
         self.assertTrue(Notification.objects.filter(recipient=self.alice, verb="reaction").exists())
 
-        # Posting the same emoji again toggles the reaction off.
         client.post(f"/api/reviews/{review.id}/react/", {"emoji": "like"})
         self.assertFalse(Notification.objects.filter(recipient=self.alice, verb="reaction").exists())
 
@@ -413,9 +406,6 @@ class BugfixRegressionTests(TestCase):
         logout_res = client.post("/api/auth/logout/")
         self.assertEqual(logout_res.status_code, 204)
 
-        # The refresh cookie was deleted by logout, but an attacker who
-        # captured it beforehand should not be able to reuse it afterwards —
-        # re-attach it manually and confirm the backend now rejects it.
         raw_refresh = login_res.cookies["refresh_token"].value
         client.cookies["refresh_token"] = raw_refresh
         refresh_res = client.post("/api/auth/refresh/")
@@ -438,8 +428,6 @@ class BugfixRegressionTests(TestCase):
             res = client.get(f"/api/places/{place.id}/")
         self.assertEqual(res.status_code, 200, res.data)
         self.assertEqual(res.data["reviews"][0]["comments"][0]["replies"][0]["replies"][0]["text"], "leaf")
-        # One comment tree, 3 levels deep — the pre-fix implementation issued
-        # one extra query per node; this should stay flat regardless of depth.
         self.assertLess(len(ctx.captured_queries), 15, "comment tree serialization is not flattened (N+1 regressed)")
 
 
@@ -543,11 +531,9 @@ class PlaceActivityNotificationAndProfileTests(TestCase):
         client = self.client_as(self.carol)
         res = client.post(f"/api/reviews/{review.id}/comments/", {"text": "hey"})
         self.assertEqual(res.status_code, 201, res.data)
-        # Alice owns the place (not the review) and should still be notified.
         self.assertTrue(
             Notification.objects.filter(recipient=self.alice, actor=self.carol, verb="place_activity").exists()
         )
-        # Bob owns the review itself, so gets the separate "reply" notification.
         self.assertTrue(Notification.objects.filter(recipient=self.bob, actor=self.carol, verb="reply").exists())
 
     def test_nested_reply_notifies_place_owner_too(self):
@@ -570,8 +556,6 @@ class PlaceActivityNotificationAndProfileTests(TestCase):
         review2 = Review.objects.create(
             place=self.place, user=self.alice, rating_atmosphere=5, rating_drinks=5, rating_price=5
         )
-        # Bob also replies on Alice's review — a profile is "their own stuff",
-        # so this comment must NOT show up in bob's profile activity.
         Comment.objects.create(review=review2, user=self.bob, text="nice")
 
         client = self.client_as(self.alice)
@@ -705,11 +689,11 @@ class PlaceTopVoteAndLeaderboardTests(TestCase):
         self.assertEqual(res.data["results"][0]["rank"], 2)
 
     def test_user_leaderboard_ranks_by_combined_score(self):
-        make_place(self.alice)  # alice: +5 for adding a place
+        make_place(self.alice)
         place = Place.objects.filter(created_by=self.alice).first()
         Review.objects.create(
             place=place, user=self.bob, rating_atmosphere=4, rating_drinks=4, rating_price=4
-        )  # bob: +3 for a review
+        )
         client = self.client_as(self.alice)
         res = client.get("/api/leaderboard/users/")
         self.assertEqual(res.status_code, 200, res.data)

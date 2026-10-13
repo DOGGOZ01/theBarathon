@@ -22,10 +22,8 @@ interface AuthState {
 
 const AuthContext = createContext<AuthState | null>(null);
 
-// Only ever navigate to an in-app relative path after login/register — a
-// `next`/redirect query param straight from the URL is attacker-controlled,
-// so an absolute or protocol-relative URL here would be an open redirect.
-// Browsers treat "\" like "/", so "/\evil.com" is protocol-relative too.
+// Only in-app paths after login, to avoid an open redirect.
+// Browsers treat "\" like "/", so "/\evil.com" is rejected too.
 function safeRedirect(path: string | null | undefined): string {
   if (!path || !path.startsWith("/") || path.startsWith("//") || path.startsWith("/\\")) return "/";
   return path;
@@ -108,10 +106,7 @@ export function useAuth() {
   return ctx;
 }
 
-// Once the initial auth check has settled with no user (e.g. a stale/expired
-// refresh_token cookie the middleware let through because it only checks
-// presence, not validity), send the user to /login instead of leaving pages
-// stuck on their "authLoading || !user" loading branch forever.
+// No user after the auth check (e.g. expired refresh cookie): go to /login.
 export function useRequireAuth() {
   const { user, loading } = useAuth();
   const router = useRouter();

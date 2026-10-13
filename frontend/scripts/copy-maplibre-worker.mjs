@@ -1,10 +1,6 @@
-// Turbopack doesn't correctly emit maplibre-gl's worker chunk (and its
-// sibling maplibre-gl-shared.mjs), so the library falls back to a broken
-// worker URL and the map silently never loads tiles. The fix is to serve
-// both files from public/ ourselves and point maplibre-gl at them
-// explicitly (see src/components/MapView.tsx, setWorkerUrl). This script
-// re-copies them from node_modules on every install so they can't drift out
-// of sync with the installed maplibre-gl version.
+// Turbopack doesn't emit maplibre-gl's worker files correctly, so they're served
+// from public/ (see src/components/MapView.tsx). Re-copied on every install so
+// they match the installed maplibre-gl version.
 import { copyFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

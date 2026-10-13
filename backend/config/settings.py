@@ -1,5 +1,5 @@
 """
-Django settings for the Bar Rating App backend.
+Django settings for the theBarathon backend.
 """
 
 import os
@@ -16,10 +16,8 @@ SECRET_KEY = os.environ.get(
 
 DEBUG = os.environ.get("DJANGO_DEBUG", "True") == "True"
 
-# In DEBUG (the dev default), accept any Host header unless DJANGO_ALLOWED_HOSTS
-# is set explicitly — this lets the same backend be reached from a LAN IP
-# (e.g. testing from a phone on the same Wi-Fi) without extra config. Always
-# set DJANGO_ALLOWED_HOSTS explicitly once DEBUG=False.
+# DEBUG accepts any Host so the dev server works from a LAN IP.
+# Set DJANGO_ALLOWED_HOSTS in production.
 _allowed_hosts_env = os.environ.get("DJANGO_ALLOWED_HOSTS")
 if _allowed_hosts_env:
     ALLOWED_HOSTS = [h for h in _allowed_hosts_env.split(",") if h]
@@ -126,31 +124,26 @@ REST_FRAMEWORK = {
         "register": os.environ.get("THROTTLE_REGISTER", "10/hour"),
         "refresh": os.environ.get("THROTTLE_REFRESH", "30/min"),
     },
-    # Number of reverse proxies in front of gunicorn (nginx = 1). Throttling
-    # keys anonymous clients by IP; without this every request looks like it
-    # comes from the proxy (127.0.0.1) and all visitors share one bucket.
-    # Only set it when gunicorn is NOT reachable directly, otherwise clients
-    # can spoof X-Forwarded-For.
+    # Proxies in front of gunicorn (e.g. Cloudflare + nginx = 2), so throttling keys on
+    # the real client IP. Only safe if the origin is reachable through them alone.
     "NUM_PROXIES": int(os.environ["DRF_NUM_PROXIES"]) if os.environ.get("DRF_NUM_PROXIES") else None,
 }
 
-# Throttle counters live in the cache. A file cache is shared by all gunicorn
-# workers on the host (LocMemCache would give each worker its own counters).
-CACHES = {
-    "default": {
-        "BACKEND": "django.core.cache.backends.filebased.FileBasedCache",
-        "LOCATION": os.environ.get("DJANGO_CACHE_DIR", os.path.join(tempfile.gettempdir(), "thebarathon-cache")),
-    }
-}
-if "test" in sys.argv:
-    # Fresh, per-run counters so repeated test runs don't trip the throttles.
+# Production: file cache so all gunicorn workers share the throttle counters.
+# Dev and tests: in-memory (single process; the file cache also races on Windows).
+if DEBUG or "test" in sys.argv:
     CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.filebased.FileBasedCache",
+            "LOCATION": os.environ.get("DJANGO_CACHE_DIR", os.path.join(tempfile.gettempdir(), "thebarathon-cache")),
+        }
+    }
 
-# Hard cap on request bodies (uploads included), enforced by
-# core.middleware.MaxBodySizeMiddleware. Also set nginx client_max_body_size.
+# Max request body size, uploads included (see core.middleware).
 MAX_REQUEST_BODY_SIZE = int(os.environ.get("MAX_REQUEST_BODY_MB", "15")) * 1024 * 1024
-# Comment reply chains deeper than this are rejected (the thread serializer
-# is recursive, so unbounded depth could crash the review page).
+# The comment serializer is recursive, so reply depth is capped.
 MAX_COMMENT_DEPTH = 20
 
 # --- SimpleJWT ---
@@ -166,13 +159,12 @@ AUTH_COOKIE_ACCESS = "access_token"
 AUTH_COOKIE_REFRESH = "refresh_token"
 AUTH_COOKIE_SECURE = os.environ.get("AUTH_COOKIE_SECURE", "False") == "True"
 AUTH_COOKIE_SAMESITE = os.environ.get("AUTH_COOKIE_SAMESITE", "Lax")
-# Django's own cookies (used by /admin/) follow the same rule.
+# Django's own cookies follow the same setting.
 SESSION_COOKIE_SECURE = AUTH_COOKIE_SECURE
 CSRF_COOKIE_SECURE = AUTH_COOKIE_SECURE
 
-# The built-in Django admin isn't used by the app (everything goes through
-# the API and the app's own /admin page), so it's only mounted in DEBUG unless
-# explicitly enabled.
+# The app doesn't use the Django admin, so it's only mounted in DEBUG
+# unless DJANGO_ADMIN_ENABLED is set.
 DJANGO_ADMIN_ENABLED = os.environ.get("DJANGO_ADMIN_ENABLED", str(DEBUG)) == "True"
 
 # --- CORS ---
@@ -182,10 +174,7 @@ CORS_ALLOWED_ORIGINS = [
 CORS_ALLOW_CREDENTIALS = True
 
 if DEBUG:
-    # Also accept the frontend when it's opened from a private LAN address
-    # (e.g. http://192.168.1.23:3000 when testing from a phone) — the exact
-    # IP isn't known ahead of time, so match private ranges by regex instead
-    # of requiring CORS_ALLOWED_ORIGINS to be updated per network. Dev-only.
+    # Dev: also accept the frontend from private LAN addresses (testing from a phone).
     CORS_ALLOWED_ORIGIN_REGEXES = [
         r"^http://localhost:\d+$",
         r"^http://127\.0\.0\.1:\d+$",

@@ -26,19 +26,13 @@ export const PLACE_TYPE_LABELS: Record<PlaceType, string> = {
   evenement: "Événement",
 };
 
-// Bar and restaurant share all 3 rating criteria; "endroit" has no drinks criterion.
+// Bar and restaurant have all 3 criteria; endroit has no drinks rating.
 export const PLACE_TYPES_WITH_DRINKS: PlaceType[] = ["bar", "restaurant"];
 
-// Types that use the atmosphere/price criteria breakdown at all — "balade"
-// and "evenement" have none of it, just a single direct overall rating
-// (Review.rating_overall).
+// Types with a criteria breakdown; balade and evenement only get an overall rating.
 export const PLACE_TYPES_WITH_CRITERIA: PlaceType[] = ["bar", "restaurant", "endroit"];
 
-// Same underlying field (rating_drinks/avg_drinks) everywhere — only the
-// displayed label changes, since "Boissons" alone reads oddly for a
-// restaurant where the criterion covers food and drinks together.
-// (Never read for "balade"/"evenement" — outside PLACE_TYPES_WITH_DRINKS —
-// but a Record<PlaceType, string> needs an entry for every type.)
+// Label for the drinks criterion: for restaurants it covers food too.
 export const DRINKS_CRITERION_LABEL: Record<PlaceType, string> = {
   bar: "Boissons",
   restaurant: "Cuisine & Boissons",
@@ -52,7 +46,7 @@ export interface Place {
   city: number;
   name: string;
   place_type: PlaceType;
-  // Only set (and only meaningful) for place_type "evenement".
+  // Only for place_type "evenement".
   event_date: string | null;
   photo: string | null;
   latitude: string;
@@ -63,9 +57,7 @@ export interface Place {
   avg_overall: string;
   avg_spent: string;
   top_count: number;
-  // Set only while the current user is on cooldown for this place's Top
-  // button (null once they're eligible to vote again, or if they've never
-  // voted).
+  // When the Top cooldown ends for the current user; null if they can vote.
   my_top_next_available_at: string | null;
   created_by: User | null;
 }

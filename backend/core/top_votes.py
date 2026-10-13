@@ -8,9 +8,7 @@ COOLDOWN = timedelta(hours=16)
 
 
 class TopVoteError(Exception):
-    """Raised by cast() when the vote is rejected; carries the HTTP status
-    the view should respond with and, for a cooldown rejection, when the
-    user can vote again."""
+    """Rejected vote, with the HTTP status and, on cooldown, when voting reopens."""
 
     def __init__(self, message, *, status_code, next_available_at=None):
         super().__init__(message)
@@ -20,8 +18,7 @@ class TopVoteError(Exception):
 
 
 def next_available_at(place, user):
-    """None if `user` can vote Top for `place` right now, otherwise the
-    datetime their cooldown lifts."""
+    """None if `user` can vote now, otherwise when the cooldown ends."""
     last = PlaceTopVote.objects.filter(place=place, user=user).order_by("-created_at").first()
     if last is None:
         return None
@@ -30,9 +27,8 @@ def next_available_at(place, user):
 
 
 def cast(place, user):
-    """Record a Top vote for `place` by `user`. Returns the datetime the
-    next vote becomes available. Raises TopVoteError if `user` hasn't
-    reviewed `place` yet or is still on cooldown."""
+    """Record a Top vote and return when the next one is allowed.
+    Raises TopVoteError without a review or during the cooldown."""
     if not Review.objects.filter(place=place, user=user).exists():
         raise TopVoteError(
             "Vous devez laisser un avis avant de voter Top pour cet établissement.",

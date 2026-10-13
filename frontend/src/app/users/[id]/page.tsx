@@ -70,7 +70,7 @@ export default function UserProfilePage() {
           onClick={() => setTab("places")}
           className={`flex-1 rounded-block py-2 text-sm font-medium ${tab === "places" ? "bg-yellow" : ""}`}
         >
-          Endroits ajoutés
+          Établissements ajoutés
         </button>
       </div>
 

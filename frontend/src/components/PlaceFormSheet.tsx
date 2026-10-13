@@ -15,11 +15,7 @@ interface PlaceFormSheetProps {
   onCancel: () => void;
 }
 
-// <input type="datetime-local"> wants "YYYY-MM-DDTHH:mm" in local time, with
-// no timezone suffix; the backend gives/wants a UTC ISO string. `new Date()`
-// parses a naive "YYYY-MM-DDTHH:mm" string as local time and formats getters
-// (getFullYear/getHours/…) in local time too, so this round-trips correctly
-// through both conversions without a UTC/local mismatch.
+// datetime-local uses "YYYY-MM-DDTHH:mm" in local time; the API uses UTC ISO strings.
 function isoToDatetimeLocal(iso: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -36,9 +32,7 @@ export function PlaceFormSheet({ cityId, place, pin, onSaved, onCancel }: PlaceF
   const [busy, setBusy] = useState(false);
   useHideBottomNav();
 
-  // The type picker only shows up at creation (type is fixed afterwards —
-  // see the comment below), so once editing an existing place the type to
-  // check against is the place's own, not the (unused) placeType state.
+  // The type can't change after creation, so editing checks the place's own type.
   const isEvenement = (place?.place_type ?? placeType) === "evenement";
 
   async function onSubmit(e: React.FormEvent) {
@@ -49,15 +43,11 @@ export function PlaceFormSheet({ cityId, place, pin, onSaved, onCancel }: PlaceF
       const fd = new FormData();
       fd.append("name", name);
       if (!place) {
-        // Editing only ever touches name/photo/event_date — city, position
-        // and type are set once at creation and aren't part of this form
-        // afterwards.
+        // Editing only changes name, photo and event date.
         fd.append("city", String(cityId));
         fd.append("place_type", placeType);
         if (pin) {
-          // Backend DecimalField allows at most 6 decimal places; raw
-          // Leaflet click coordinates have far more (float precision) and
-          // would otherwise fail serializer validation on every save.
+          // The API accepts at most 6 decimal places.
           fd.append("latitude", pin[0].toFixed(6));
           fd.append("longitude", pin[1].toFixed(6));
         }
@@ -131,7 +121,7 @@ export function PlaceFormSheet({ cityId, place, pin, onSaved, onCancel }: PlaceF
             </label>
           )}
           <label className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium">Photo {place && "(facultatif — laissez vide pour ne pas la changer)"}</span>
+            <span className="text-sm font-medium">Photo {place && "(facultatif, laissez vide pour garder la photo actuelle)"}</span>
             <input type="file" accept="image/*" onChange={(e) => setPhotoFile(e.target.files?.[0] ?? null)} />
           </label>
         </div>

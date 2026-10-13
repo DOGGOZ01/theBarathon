@@ -1,11 +1,6 @@
 function resolveApiBase(): string {
   if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
-  // No explicit override: assume the backend lives on the same host the
-  // page was loaded from (port 8000). This makes the app work unmodified
-  // whether it's opened via localhost, 127.0.0.1, or a LAN IP (e.g. testing
-  // from a phone on the same Wi-Fi) — hardcoding "localhost" here would
-  // silently break every fetch on any device that isn't the dev machine
-  // itself, since "localhost" resolves to that device, not the server.
+  // Default: backend on the same host as the page, port 8000 (also works from LAN devices).
   if (typeof window !== "undefined") {
     return `http://${window.location.hostname}:8000/api`;
   }
@@ -14,13 +9,6 @@ function resolveApiBase(): string {
 
 export const API_BASE = resolveApiBase();
 
-// DRF returns two different shapes for errors: a top-level {"detail": "..."}
-// for hand-raised ValidationErrors (e.g. LoginView's bad-credentials check),
-// but per-field {"username": ["Ce nom d'utilisateur est déjà pris."]} for
-// ordinary serializer field validation (e.g. RegisterSerializer). Only
-// handling "detail" meant every field-validation error surfaced to the user
-// as a meaningless "Request failed (400)" — this pulls the real message out
-// of whichever shape actually came back.
 function extractErrorMessage(status: number, data: unknown): string {
   if (typeof data === "object" && data !== null) {
     const obj = data as Record<string, unknown>;
@@ -30,7 +18,7 @@ function extractErrorMessage(status: number, data: unknown): string {
       if (typeof value === "string") return value;
     }
   }
-  return `Request failed (${status})`;
+  return `La requête a échoué (${status})`;
 }
 
 export class ApiError extends Error {
@@ -85,13 +73,7 @@ export async function apiFetch<T = unknown>(path: string, options: RequestOption
       : { "Content-Type": "application/json", ...(options.headers ?? {}) },
   });
 
-  // Only login/register/refresh must be excluded from the retry-via-refresh
-  // path (retrying those would loop or mask bad credentials as a session
-  // hiccup). Everything else — including /auth/me/ — needs the retry: the
-  // whole "/auth/" prefix was excluded before, so once the 30min access
-  // token expired, the next /auth/me/ call (e.g. on a page reload) 401'd
-  // without ever attempting a refresh, logging the user out even though
-  // their 14-day refresh_token cookie was still valid.
+  // Everything except login/register/refresh retries once after refreshing the token.
   const isAuthBootstrapPath =
     path.startsWith("/auth/login") || path.startsWith("/auth/register") || path.startsWith("/auth/refresh");
   if (res.status === 401 && !options.skipAuthRetry && !isAuthBootstrapPath) {

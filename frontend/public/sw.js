@@ -20,18 +20,13 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const { request } = event;
 
-  // Never touch page navigations: re-fetching a navigate-mode request from
-  // inside a service worker throws in some browsers (Firefox), which is
-  // exactly what broke every page load here. Let the browser handle these
-  // directly — this SW is only for installability/app-shell assets, not
-  // full offline support.
+  // Leave navigations to the browser: re-fetching them in a service worker
+  // breaks in Firefox. This worker only caches app-shell assets.
   if (request.mode === "navigate" || request.method !== "GET") return;
 
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
-  // /api/ is dynamic+authenticated, /tiles/ is a multi-GB file fetched with
-  // Range requests — the Cache API can't store 206 Partial Content
-  // responses at all, and shouldn't try to hold a multi-GB file anyway.
+  // Skip the API and map tiles (tiles use range requests, which can't be cached).
   if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/tiles/")) return;
   if (request.headers.has("range")) return;
 

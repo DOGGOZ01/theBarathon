@@ -95,8 +95,6 @@ class LoginView(APIView):
 
         user = User.objects.filter(username__iexact=username).first()
         if user is None:
-            # Hash anyway so an unknown username takes as long as a wrong
-            # password (no username enumeration by response time).
             User().set_password(password)
         if user is None or not user.check_password(password) or not user.is_active:
             raise ValidationError({"detail": "Identifiants invalides."})
@@ -139,7 +137,6 @@ class LogoutView(APIView):
             try:
                 RefreshToken(raw_refresh).blacklist()
             except TokenError:
-                # Already invalid/expired/blacklisted — nothing more to revoke.
                 pass
 
         response = Response(status=status.HTTP_204_NO_CONTENT)
@@ -252,9 +249,6 @@ class PlaceReviewsView(generics.ListCreateAPIView):
         try:
             review = serializer.save(place=place, user=request.user)
         except IntegrityError:
-            # Belt-and-braces for the race where two concurrent requests both
-            # pass the exists() check above before either has saved; the
-            # place+user unique_together constraint is the real backstop.
             return Response(
                 {"detail": "Vous avez déjà laissé un avis pour cet établissement."}, status=status.HTTP_409_CONFLICT
             )
@@ -314,9 +308,7 @@ class ReviewPhotoDetailView(generics.DestroyAPIView):
 
 
 class ReviewCommentsView(generics.ListCreateAPIView):
-    """Top-level replies to a review; each item's `replies` field carries the
-    full nested thread beneath it, so the frontend gets the whole tree in one
-    request."""
+    """Top-level replies to a review, each with its nested replies."""
 
     serializer_class = CommentSerializer
     permission_classes = [IsAuthenticated]
@@ -493,8 +485,7 @@ def _comment_activity_item(comment):
 
 
 class ActivityFeedView(APIView):
-    """Recently added places (anyone) and recently added reviews/comments
-    (other users only), merged into one reverse-chronological feed."""
+    """Latest places, plus other users' reviews and comments, newest first."""
 
     permission_classes = [IsAuthenticated]
 
@@ -523,10 +514,7 @@ class ActivityFeedView(APIView):
 
 
 class UserProfileView(APIView):
-    """Public-within-the-group profile: what a user has added (places) and
-    reviewed. Deliberately reviews only, not threaded comments — those are
-    replies to other people's content and don't read as "this user's own
-    stuff" the way a profile page should."""
+    """A user's places and reviews (not their comments)."""
 
     permission_classes = [IsAuthenticated]
     PROFILE_ACTIVITY_LIMIT = 100
@@ -564,19 +552,14 @@ def _parse_paging(request, default_limit=10, max_limit=50):
     return max(0, offset), max(1, min(limit, max_limit))
 
 
-# Combined-score weights for the user leaderboard: adding a place is worth
-# more than writing a review, which in turn outweighs a single reaction
-# received — a rough proxy for how much effort/value each action represents.
+# User leaderboard score weights.
 LEADERBOARD_REVIEW_WEIGHT = 3
 LEADERBOARD_PLACE_WEIGHT = 5
 LEADERBOARD_REACTION_WEIGHT = 1
 
 
 class UserLeaderboardView(APIView):
-    """Ranks every user by a combined activity score. Rank is computed over
-    the full ranking first, then `search` filters which rows are returned —
-    so a searched-for user still shows their true position, not a position
-    within the filtered subset."""
+    """Users ranked by activity score. Search filters after ranking, so ranks stay real."""
 
     permission_classes = [IsAuthenticated]
 
@@ -591,10 +574,7 @@ class UserLeaderboardView(APIView):
             for row in Place.objects.exclude(created_by=None).values("created_by_id").annotate(c=Count("id"))
         }
 
-        # Reactions RECEIVED (on this user's reviews/comments), not given —
-        # Reaction uses a GenericForeignKey so there's no direct FK join;
-        # with a group this small, one pass in Python over every reaction
-        # row is simpler and cheap enough.
+        # Reactions received. Counted in Python since Reaction uses a generic FK.
         review_owner = dict(Review.objects.values_list("id", "user_id"))
         comment_owner = dict(Comment.objects.values_list("id", "user_id"))
         review_ct_id = ContentType.objects.get_for_model(Review).id
@@ -640,8 +620,7 @@ class UserLeaderboardView(APIView):
 
 
 class PlaceLeaderboardView(APIView):
-    """Ranks every place by its Top vote count, same search-after-ranking
-    behavior as UserLeaderboardView."""
+    """Places ranked by Top votes, searched the same way as users."""
 
     permission_classes = [IsAuthenticated]
 

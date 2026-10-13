@@ -76,10 +76,7 @@ def notify_reply(comment):
 
 
 def notify_place_activity(actor, place, review, comment=None):
-    """Notify the owner of `place` that someone added a review/comment
-    somewhere in its discussion — a separate concern from notify_reply,
-    since the place owner may be a completely different person from whoever
-    owns the specific review/comment that was replied to."""
+    """Notify the place's creator about a new review or comment on it."""
     owner = place.created_by
     if owner is None or owner.id == actor.id:
         return

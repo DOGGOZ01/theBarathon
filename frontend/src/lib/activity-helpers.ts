@@ -3,12 +3,10 @@ import type { ActivityItem } from "@/lib/types";
 export function actionLabel(item: ActivityItem): string {
   if (item.type === "place") return `a ajouté ${item.place_name}`;
   if (item.type === "review") return `a laissé un avis sur ${item.place_name}`;
-  return `a commenté sur ${item.place_name}`;
+  return `a laissé un commentaire sur ${item.place_name}`;
 }
 
-/** Same information as actionLabel, but phrased to stand alone without a
- * leading username — used where every row already belongs to one known
- * person (e.g. that person's own profile page). */
+/** Like actionLabel, without the leading username (e.g. on a profile page). */
 export function actionLabelStandalone(item: ActivityItem): string {
   if (item.type === "place") return `Ajouté ${item.place_name}`;
   if (item.type === "review") return `Avis sur ${item.place_name}`;

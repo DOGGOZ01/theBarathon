@@ -77,7 +77,7 @@ function CityMapPageInner() {
           ←
         </Link>
         <span className="pointer-events-auto rounded-pill border-2 border-ink bg-paper-raised px-3 py-2 text-sm font-medium shadow-hard-sm">
-          {city.name} · {places.length} établissements
+          {city.name} · {places.length} établissement{places.length > 1 ? "s" : ""}
         </span>
       </div>
       <MapView
@@ -99,7 +99,7 @@ function CityMapPageInner() {
 
       {picking && (
         <MapPickerOverlay
-          title={`Établissement à : ${city.name}`}
+          title="Où se trouve l'établissement ?"
           center={[Number(city.latitude), Number(city.longitude)]}
           zoom={15}
           contextPlaces={places}
