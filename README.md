@@ -153,3 +153,7 @@ keeping both processes running and restarting them on failure.
 ## 📬 Contact
 
 [LinkedIn](https://www.linkedin.com/in/aleksandr-kuznetsov-018006358/) · [doggoz01@proton.me](mailto:doggoz01@proton.me)
+
+## 📄 License
+
+[PolyForm Noncommercial 1.0.0](LICENSE): free for personal and other noncommercial use. Selling the code or using it in a commercial product is not allowed.
